@@ -330,8 +330,12 @@ class Sensitivity:
         self.interaction = np.zeros([points , points])
 
         ## gotta redo main effect to do the interaction...
-        print("Recalculating main effect with", points, "points...")
-        self.main_effect(plot=False, points=points, w=[i,j])
+        try:
+            print("Recalculating main effect with", points, "points...")
+            self.main_effect(plot=False, points=points, w=[i,j])
+        except IndexError as e:
+            print("ERROR: invalid input indices. Return None.")
+            return None
 
         self.initialise_matrices()
         self.b4_input_loop()
