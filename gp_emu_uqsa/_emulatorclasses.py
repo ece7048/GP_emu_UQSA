@@ -122,7 +122,9 @@ class Beliefs:
             exit()
 
         # check for presence of all required keywords
-        for i in ['active', 'output', 'basis_str', 'basis_inf', 'beta',\
+        #for i in ['active', 'output', 'basis_str', 'basis_inf', 'beta',\
+        #          'delta', 'sigma', 'nugget', 'fix_nugget', 'mucm']:
+        for i in ['active', 'output', 'mean', 'beta',\
                   'delta', 'sigma', 'nugget', 'fix_nugget', 'mucm']:
             try:
                 self.beliefs[i]
@@ -145,14 +147,6 @@ class Beliefs:
                           " setting value to 'unknown' and continuing")
                     self.active_index = 'unknown'
 
-        # which input dimensions to use
-        self.active = []
-        active = str(self.beliefs['active']).strip().split(' ')[0:]
-        if active[0] == "all":
-            self.active = []
-        else:
-            self.active = [int(active[i]) for i in range(0, len(active))]
-        print("active:", self.active)
 
         # output_index specifies the output that was specified when emulator was last trained
         if 'output_index' in self.beliefs:
@@ -168,23 +162,32 @@ class Beliefs:
         print("output:",self.output)
 
         # mean function specifications
-        self.basis_str = (str(self.beliefs['basis_str']).strip().split(' '))
-        self.basis_inf =\
-          [int(i) for i in str(self.beliefs['basis_inf']).strip().split(' ')[1:]]
+        #self.basis_str = (str(self.beliefs['basis_str']).strip().split(' '))
+        #self.basis_inf =\
+        #  [int(i) for i in str(self.beliefs['basis_inf']).strip().split(' ')[1:]]
+        self.mean = (str(self.beliefs['mean']).strip().split(' '))
         self.beta =\
           [float(i) for i in (str(self.beliefs['beta']).strip().split(' '))]
 
         # check that the mean function specifications are correct
-        if len(self.basis_str) != len(self.basis_inf) + 1:
-            print("WARNING: basis_str & basis_inf need an equal number of "
-                  "entires, including redundant first entry of basis_inf.")
-            exit()
-        if len(self.basis_str) != len(self.beta):
-            print("WARNING: basis_str & beta need an equal number of entries.")
+        #if len(self.basis_str) != len(self.basis_inf) + 1:
+        #    print("WARNING: basis_str & basis_inf need an equal number of "
+        #          "entires, including redundant first entry of basis_inf.")
+        #    exit()
+        if len(self.mean) != len(self.beta):
+            print("WARNING: mean & beta need an equal number of entries.")
             exit()
 
         self.delta =\
           [float(i) for i in (str(self.beliefs['delta']).strip().split(' '))]
+
+        # which input dimensions to use
+        active = str(self.beliefs['active']).strip().split(' ')[0:]
+        if active[0] == "all":
+            self.active = [int(i) for i in range(len(self.delta))]
+        else:
+            self.active = [int(active[i]) for i in range(0, len(active))]
+        print("active:", self.active)
 
         self.sigma =\
           float( str(self.beliefs['sigma']).strip().split(' ')[0] )
@@ -236,8 +239,9 @@ class Beliefs:
         f.write("active " + ' '.join(map(str,[i for i in range(0,len(E.par.delta))])) +"\n")
         f.write("output_index " + str(self.output) +"\n")
         f.write("output 0" +" \n")
-        f.write("basis_str " + ' '.join(map(str,self.basis_str)) +"\n")
-        f.write("basis_inf " + "NA " + ' '.join(map(str,self.basis_inf)) +"\n")
+        f.write("mean " + ' '.join(map(str,self.mean)) +"\n")
+        #f.write("basis_str " + ' '.join(map(str,self.basis_str)) +"\n")
+        #f.write("basis_inf " + "NA " + ' '.join(map(str,self.basis_inf)) +"\n")
         f.write("beta " + ' '.join(map(str,E.par.beta)) +"\n")
         f.write("delta " + ' '.join(map(str,list(E.par.delta))) +"\n")
         f.write("sigma " + str(E.par.sigma) +"\n")
@@ -264,57 +268,64 @@ class Basis:
     def __init__(self, beliefs):
         self.h = []  # for list of basis functions
 
-        # check that specified basis_inf dims are in 'active'
-        if beliefs.active != []:
-            for i in range( len(beliefs.basis_inf) ):
-                if beliefs.basis_inf[i] not in beliefs.active:
-                    print("WARNING: basis_inf specifies non-active inputs")
-                    exit()
+        ## from beliefs
+        self.mean = beliefs.mean
+        self.active = beliefs.active
+        #print("ai:", self.active)
 
-        # since stored inputs are only the 'active' inputs
-        # we must readjust basis_inf to refer to the new indices
-        # e.g. 0 1 3 -> 0 1 2 (the 3rd input is now, really, the 2nd)
-        j=0
-        if beliefs.active != []:
-            for i in range(0, len(beliefs.basis_inf) ):
-                if beliefs.basis_inf[i-j] not in beliefs.active:
-                    print("Input", beliefs.basis_inf[i-j], "not active")
-                    del beliefs.basis_inf[i-j]    
-                    del beliefs.basis_str[i+1-j]
-                    j=j+1
-        beliefs.basis_inf = list( range(0,len(beliefs.basis_inf)) )
+        # make dictionary mapping of indices of the active inputs
+        self.dic = {}
+        if self.active != []:
+            for i in range(len(self.active)):
+                self.dic[str(sorted(self.active)[i])] = i
+        print("Inputs relabelled:", self.dic)
 
-        self.make_h(beliefs.basis_str)
-        self.print_mean_function\
-          (beliefs.basis_inf, beliefs.basis_str, beliefs.active)
-        self.basis_inf = beliefs.basis_inf
+        ## I must ensure that thereare no indices in basis_str that aren't in the active inputs
+        for m in self.mean:
+            idx = [i.split("[")[1] for i in m.split("]") if len(i.split("["))>1]
+            if idx != []:
+                for i in idx:
+                    if int(i) not in self.active:
+                       print("ERROR: Inactive input", i, "in mean;"
+                             " use indices before relabelling. Exiting().")
+                       exit()
+
+        # re-adjust mean
+        print("Original basis functions:", self.mean)
+        sq = lambda x: "[" + str(x) + "]"
+        for i in range(len(self.mean)):
+            #print("basis function", i)
+            for key in sorted(self.active):
+                #print("[key]:",sq(key), "[item]:", sq(self.dic[str(key)]))
+                self.mean[i] = self.mean[i].replace( sq(key) , sq(self.dic[str(key)]) )
+        print("Remapped basis functions:", self.mean)
+
+        self.make_h()
+        self.print_mean_function()
+
 
     # creates new basis function and appends to list
-    def make_h(self, basis_str):
+    def make_h(self):
+        
+        # build in default mode
         comm = ""
-        for i in range(0, len(basis_str) ):
+        for i in range(0, len(self.mean) ):
             comm = comm\
-              + "def h_" + str(i) + "(x):\n    return " + basis_str[i]\
+              + "def h_" + str(i) + "(x):\n" \
+              + "    return " + self.mean[i] \
               + "\nself.h.append(h_" + str(i) + ")\n"
+
+        ## create basis functions
         exec(comm)
 
-    def print_mean_function(self, basis_inf, basis_str, include):
-        self.meanf = "m(x) ="
-        for i in range(0,len(self.h)):
-            if i == 0 :
-                self.meanf = self.meanf + " b"
-            if i > 0 :
-                if include == []:
-                    self.meanf = self.meanf + " +" + " b"\
-                      + str(basis_inf[i-1])\
-                      + basis_str[i]\
-                      + "["+str(basis_inf[i-1]) +"]"
-                else:
-                    self.meanf = self.meanf + " +" + " b"\
-                      + str(include[i-1])\
-                      + basis_str[i]\
-                      + "["+str(include[i-1]) +"]"
-        print(self.meanf)
+
+    def print_mean_function(self):
+        mx = "m(x) ="
+        plus = lambda x: " + " if x > 0 else " "
+        beta = lambda x: "b" if x == 0 else "b" + str(x-1)
+        for i in range(0,len(self.mean)):
+            mx = mx + plus(i) + beta(i) + "*" + self.mean[i]
+        print(mx)
 
 
 ### the configuration settings for training and validation
@@ -558,13 +569,8 @@ class Data:
     def make_H(self):
         for i in range(0, self.inputs[:,0].size):
             for j in range(0, len(self.basis.h)):
-                if j==0:
-                    # first basis func returns 1.0
-                    self.H[i,j]=self.basis.h[j](1.0)
-                if j>0:
-                    self.H[i,j]=self.basis.h[j]\
-                      (self.inputs[i, self.basis.basis_inf[j-1]])
-        
+                self.H[i,j]=self.basis.h[j](self.inputs[i])
+       
     # create Estimate of mean
     def make_E(self):
         self.E = (self.H).dot(self.par.beta)

@@ -29,14 +29,26 @@ def setup(emul,  m, v, case="case2"):
               "Return None.")
         return None
 
+
+    mean = emul.beliefs.mean
+    xsq = lambda x: "x[" + str(x) + "]"
     if case=="case2":
+        ok = True
+        for bf in range(len(mean)):
+            if bf == 0:
+                if mean[bf] != '1' and mean[bf] != '1.' and mean[bf] != '1.0':
+                    ok = False
+            else:
+                if mean[bf] != xsq(bf-1):
+                    ok = False
+
         # make sure mean function is linear
-        if len(emul.par.beta) != emul.training.inputs[0].size+1 \
-          or False in [i=='x' for i in emul.beliefs.basis_str[1:]]:
+        if ok == False:
             print("The case2 sensitivity routines only work for emulators "
                   "with a gaussian kernel and linear mean. "
                   "This mean function will not work. Return None.")
             return None
+
         # ensure that supplied m and v lists are long enough
         if len(m) != len(emul.par.beta) - 1 \
           or len(v) != len(emul.par.beta) - 1:
@@ -44,7 +56,7 @@ def setup(emul,  m, v, case="case2"):
                   "as there are input dimensions. Return None.")
             return None
     else:
-        print("Only case2 of MUCM's U & S analysis is implemented. Return None.")
+        print("Only case2 of MUCM's UQSA is implemented at the moment. Return None.")
         return None
 
 

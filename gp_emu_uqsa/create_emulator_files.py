@@ -8,8 +8,8 @@ def create_emulator_files():
     if not __os.path.exists(name):
         __os.makedirs(name)
     else:
-        print("That directory already exists, aborting")
-        __os.sys.exit()
+        print("ERROR: That directory already exists. Exiting.")
+        return
 
     inputs = input("Number of inputs: ")
     inputs=int(inputs)
@@ -21,13 +21,11 @@ def create_emulator_files():
     emulator = name + "_emulator" + ".py"
     print("emulator:" , emulator)
 
-    basis_str=""
-    basis_inf=""
-    beta=""
-    delta=""
+    mean = "1"
+    beta = ""
+    delta = ""
     for i in range(0,inputs):
-        basis_str = basis_str + " x"
-        basis_inf = basis_inf + " " + str(i)
+        mean = mean + " x[" + str(i) + "]"
         beta = beta + " 1.0"
         delta = delta + " 1.0"
 
@@ -36,13 +34,13 @@ def create_emulator_files():
     with open( __os.path.join(name,beliefs), 'w' ) as bf:
         bf.write("active all\n")
         bf.write("output 0\n")
-        bf.write("basis_str 1.0" + basis_str + "\n")
-        bf.write("basis_inf NA" + basis_inf + "\n")
+        bf.write("mean " + mean + "\n")
         bf.write("beta 1.0" + beta + "\n")
         bf.write("delta" + delta + "\n")
         bf.write("sigma 1.0\n")
         bf.write("nugget 0.0\n")
-        bf.write("fix_nugget T\n")
+        bf.write("fix_nugget F\n")
+        bf.write("alt_nugget F\n")
         bf.write("mucm F\n")
 
     inputs_filename=name + "_inputs"
@@ -56,26 +54,14 @@ def create_emulator_files():
         cf.write("delta_bounds [ ]\n")
         cf.write("sigma_bounds [ ]\n")
         cf.write("nugget_bounds [ ]\n")
-        cf.write("tries 1\n")
-        cf.write("constraints bounds\n")
+        cf.write("tries 5\n")
+        cf.write("constraints none\n")
 
     print("Inputs and outputs files named",inputs_filename,"&",outputs_filename,"in the config file. Remember to include the input and output files in the new directory.")
 
     
     sens = input("Include sensitivity routines? y/[n]: ")
     if sens == "y":
-        sensScript = True
-    else:
-        sensScript = False
-
-    if sensScript != True:
-        print("Creating emulator script file...")
-        with open( __os.path.join(name,emulator), 'w' ) as ef:
-            ef.write("import gp_emu_uqsa as g\n")
-            ef.write("\n")
-            ef.write("emul = g.setup(\""+config+"\")\n")
-            ef.write("g.train(emul, auto=True)\n")
-    else:
         print("Creating emulator + sensitivity script file...")
         with open( __os.path.join(name,emulator), 'w' ) as ef:
             ef.write("import gp_emu_uqsa as g\n")
@@ -94,5 +80,15 @@ def create_emulator_files():
             ef.write("sens.sensitivity()\n")
             ef.write("sens.main_effect(plot=True)\n")
             ef.write("sens.to_file(\"sense_file\")\n")
-            ef.write("sens.interaction_effect(0, 1)\n")
+            if inputs > 1:
+                ef.write("sens.interaction_effect(0, 1)\n")
             ef.write("sens.totaleffectvariance()\n")
+    else:
+        print("Creating emulator script file...")
+        with open( __os.path.join(name,emulator), 'w' ) as ef:
+            ef.write("import gp_emu_uqsa as g\n")
+            ef.write("\n")
+            ef.write("emul = g.setup(\""+config+"\")\n")
+            ef.write("g.train(emul, auto=True)\n")
+
+    return
