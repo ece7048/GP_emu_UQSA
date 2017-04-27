@@ -1,7 +1,6 @@
 active all
 output 1
-basis_str 1.0 x x x
-basis_inf NA 0 1 2
+mean 1.0 x[0] x[1] x[2]
 beta 1.0 1.0 1.0 1.0
 delta 1.0 1.0 1.0
 sigma 1.0
