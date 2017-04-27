@@ -2,6 +2,7 @@ import gp_emu_uqsa.design_inputs as _gd
 import gp_emu_uqsa._emulatorclasses as __emuc
 import numpy as _np
 import matplotlib.pyplot as _plt
+import matplotlib.colors as _colors
 
 def make_sets(ai):
     sets = [] # generate sets from active_index inputs
@@ -70,9 +71,26 @@ def check_act(act, sets):
     return True
 
 
+def imp_colormap(cmap):
+    n = 100
+    gc = 0.5 # green
+    yc1 = 0.525 # yellow 1
+    yc2 = 0.8 # yellow 2
+    rc = 1.0 # red
+    green = _np.linspace(gc, yc1, 5*n/10)   # 00-50% green
+    yellow = _np.linspace(yc1, yc2, 4*n/10) # 50-80% yellow
+    red   = _np.linspace(yc2, rc, 1*n/10)   # 80-100% red
+    cb = _np.append( _np.append(green, yellow) , red )
+    new_cmap = _colors.LinearSegmentedColormap.from_list(
+        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=gc, b=rc),
+        cmap( cb ) )
+    return new_cmap
+
+
 def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False, imp_cb=[], odp_cb=[]):
 
     imp_pal = _plt.get_cmap('jet')
+    imp_pal = imp_colormap(imp_pal)
     odp_pal = _plt.get_cmap('afmhot')
 
     (odp, imp) = (ODP, IMP) if recon else (ODP[maxno-1], IMP[maxno-1])
