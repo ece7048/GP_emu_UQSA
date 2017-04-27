@@ -151,7 +151,7 @@ def imp_plot(emuls, zs, cm, var_extra, maxno=1, olhcmult=100, grid=10, act=[], f
     return
 
 
-def imp_plot_recon(cm, maxno=1, act=[], fileStr=""):
+def imp_plot_recon(cm, maxno=1, act=[], fileStr="", imp_cb=[], odp_cb=[]):
     """Reconstruct an implausibility and optical depth plot from the results files made using the imp_plot() function.
 
     Args:
@@ -176,6 +176,14 @@ def imp_plot_recon(cm, maxno=1, act=[], fileStr=""):
     sets = make_sets(act)
     print("HM for input pairs:", sets)
 
+    try:
+        [ivmin, ivmax] = [0.0, cm] if imp_cb == [] else imp_cb
+        [ovmin, ovmax] = [None, None] if odp_cb == [] else odp_cb
+    except ValueError as e:
+        print("WARNING: invalid imp_cb and/or odp_cb supplied, setting to default.")
+        [ivmin, ivmax] = [0.0, cm]
+        [ovmin, ovmax] = [None, None]
+    
     ## reload plot for each pair of inputs
     for s in sets:
         print("\nset:", s)
@@ -184,7 +192,8 @@ def imp_plot_recon(cm, maxno=1, act=[], fileStr=""):
         IMP = _np.loadtxt(nfileStr+str(maxno)+"_"+"IMP_"+str(s[0])+'_'+str(s[1]))
         ODP = _np.loadtxt(nfileStr+str(maxno)+"_"+"ODP_"+str(s[0])+'_'+str(s[1]))
 
-        make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, recon=True)
+        make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, recon=True,\
+                   imp_cb=[ivmin, ivmax], odp_cb=[ovmin, ovmax])
 
     plot_options(plt_ref, ax, fig)
     _plt.show()

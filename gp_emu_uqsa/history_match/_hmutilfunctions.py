@@ -70,7 +70,7 @@ def check_act(act, sets):
     return True
 
 
-def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False):
+def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False, imp_cb=[], odp_cb=[]):
 
     imp_pal = _plt.get_cmap('jet')
     odp_pal = _plt.get_cmap('afmhot')
@@ -85,10 +85,11 @@ def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False):
 
     im_imp = ax[plt_ref[str(s[1])],plt_ref[str(s[0])]].imshow(imp.T,
       origin = 'lower', cmap = imp_pal, extent = ex,
-      vmin=0.0, vmax=cm+1, interpolation='none' )
+      vmin=imp_cb[0], vmax=imp_cb[1], interpolation='none' )
+
     im_odp = ax[plt_ref[str(s[0])],plt_ref[str(s[1])]].imshow(odp.T,
       origin = 'lower', cmap = odp_pal, extent = ex,
-      vmin=0.0, vmax=1.0, interpolation='none' )
+      vmin=odp_cb[0], vmax=odp_cb[1], interpolation='none' )
 
     _plt.colorbar(im_imp, ax=ax[plt_ref[str(s[1])],plt_ref[str(s[0])]])
     _plt.colorbar(im_odp, ax=ax[plt_ref[str(s[0])],plt_ref[str(s[1])]])
