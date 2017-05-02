@@ -16,5 +16,3 @@ provide better error capture on misused plot function
 
 ## documentation
 Add example for History Matching routines (include an example of how to run in parallel)
-
-Mean functions must use numpy sytax e.g. np.cos(x)

@@ -236,8 +236,7 @@ The beliefs file specifies beliefs about the data, namely which input dimensions
 ```
 active all
 output 0
-basis_str 1.0 x
-basis_inf NA 0
+mean 1.0 x[0]
 beta 1.0 1.0
 delta 1.0
 sigma 1.0
@@ -256,27 +255,24 @@ The output dimension to build the emulator for is specified by ```output```. Onl
 
 #### the mean function
 
-The specifications of ```basis_str``` and ```basis_inf``` define the mean function. ```basis_str``` defines functions and ```basis_inf``` defines which input dimension correspond to those functions. ```__beta__``` defines the mean function hyperparameters. The initial values of ```beta``` do not affect the emulator training, so they can be set to 1.0 for simplicity.
+The specifications of ```mean``` defines the mean function. These must be written in numpy (see examples). ```beta``` defines the mean function hyperparameters. The initial values of ```beta``` do not affect the emulator training, so before training they can be set to 1.0 for simplicity. The whitespace separation of entries for ```mean``` and ```beta``` can be padded for readability, as below.
 
-For mean function m(__x__) = b0
+For mean function m(__x__) = b
 ```
-basis_str 1.0
-basis_inf NA
+mean 1.0
 beta 1.0
 ```
 
-For mean function m(__x__) = b0 + b0x0 + b2x2
+For mean function m(__x__) = b + b<sub>0</sub>x<sub>0</sub> + b<sub>1</sub>x<sub>1</sub>
 ```
-basis_str 1.0 x x
-basis_inf NA 0 2
-beta 1.0 1.0 1.0
+mean 1.0  x[0]  x[1]
+beta 1.0  1.0   1.0
 ```
 
-For mean function m(__x__) = b0 + b0x0 + b1x1^2 + b2x2^3
+For mean function m(__x__) = b + b<sub>0</sub>x<sub>0</sub> + b<sub>1</sub>x<sub>0</sub>x<sub>1</sub><sup>2</sup> + b<sub>2</sub>sin(x<sub>2</sub>)
 ```
-basis_str 1.0 x   x**2 x**3
-basis_inf NA  0   1    2
-beta      1.0 2.0 1.1  1.6
+mean 1.0  x[0]  x[0]*x[1]**2  np.sin(x[2])
+beta 1.0  2.0   1.1           1.6
 ```
 
 #### the hyperparameters delta and sigma
