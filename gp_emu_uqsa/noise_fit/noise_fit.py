@@ -55,9 +55,9 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
     if datac["inputs"] != noisec["inputs"]:
         print("\nWARNING: different inputs files in config files. Exiting.")
         return None 
-    if datab["alt_nugget"] == 'F':
-        print("\nWARNING: data beliefs must have alt_nugget T. Exiting.")
-        return None
+    #if datab["alt_nugget"] == 'F':
+    #    print("\nWARNING: data beliefs must have alt_nugget T. Exiting.")
+    #    return None
     if datab["fix_nugget"] == 'T' or  noiseb["fix_nugget"] == 'T':
         print("\nWARNING: data and noise beliefs need fix_nugget F. Exiting.")
         return None
@@ -65,7 +65,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
         print("\nWARNING: different tv_config in config files. Exiting.")
         return None 
     if noisec["outputs"] != "zp-outputs":
-        print("\nWARNING: config outputs file must be 'zp-outputs'. Exiting.")
+        print("\nWARNING: noise config outputs must be 'zp-outputs'. Exiting.")
         return None 
 
     ## setup emulators here

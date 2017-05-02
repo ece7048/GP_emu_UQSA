@@ -558,6 +558,7 @@ class Data:
         self.make_H()
         self.K = K
         self.r = 0 # vector of constant variances
+        self.rset = False
         self.make_A()
 
     # remake matrices
@@ -572,15 +573,17 @@ class Data:
                 self.H[i,j]=self.basis.h[j](self.inputs[i])
        
     # create Estimate of mean
-    def make_E(self):
-        self.E = (self.H).dot(self.par.beta)
+    #def make_E(self):
+    #    self.E = (self.H).dot(self.par.beta)
 
     def make_A(self, s2=1.0 , predict=True):
         self.A = self.K.var(self.inputs, predict)
-        if self.beliefs.alt_nugget == 'T':
+        #if self.beliefs.alt_nugget == 'T':
+        if self.rset:
             np.fill_diagonal(self.A, self.A.diagonal() + self.r/s2)
 
     def set_r(self, r, message=True):
+        self.rset = True
         if len(r) == self.inputs[:,0].size:
             if message == True:
                 print("\n*** Updating array 'r' of constant variances***")
