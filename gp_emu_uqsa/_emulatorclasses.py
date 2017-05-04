@@ -197,16 +197,16 @@ class Beliefs:
 
         self.fix_nugget = str(self.beliefs['fix_nugget']).strip().split(' ')[0]
 
-        if 'alt_nugget' in self.beliefs:
-            self.alt_nugget = str(self.beliefs['alt_nugget']).strip().split(' ')[0]
-        else:
-            self.alt_nugget = 'F'
+        #if 'alt_nugget' in self.beliefs:
+        #    self.alt_nugget = str(self.beliefs['alt_nugget']).strip().split(' ')[0]
+        #else:
+        #    self.alt_nugget = 'F'
 
         self.mucm = str(self.beliefs['mucm']).strip().split(' ')[0]
 
-        if self.mucm == 'T' and self.alt_nugget == 'T':
-            print("WARNING: mucm T cannot be used with alt_nugget T")
-            exit()
+        #if self.mucm == 'T' and self.alt_nugget == 'T':
+        #    print("WARNING: mucm T cannot be used with alt_nugget T")
+        #    exit()
 
         # input scalings must be read if present
         if 'input_minmax' in self.beliefs:
@@ -247,7 +247,7 @@ class Beliefs:
         f.write("sigma " + str(E.par.sigma) +"\n")
         f.write("nugget " + str(E.par.nugget) +"\n")
         f.write("fix_nugget " + str(self.fix_nugget) +"\n")
-        f.write("alt_nugget " + str(self.alt_nugget) +"\n")
+        #f.write("alt_nugget " + str(self.alt_nugget) +"\n")
         f.write("mucm " + str(self.mucm) +"\n")
         input_minmax = [list(i) for i in E.all_data.minmax[:]]
         f.write("input_minmax "+ str(E.all_data.input_minmax) +"\n")
@@ -583,13 +583,17 @@ class Data:
             np.fill_diagonal(self.A, self.A.diagonal() + self.r/s2)
 
     def set_r(self, r, message=True):
-        self.rset = True
-        if len(r) == self.inputs[:,0].size:
-            if message == True:
-                print("\n*** Updating array 'r' of constant variances***")
-            self.r = r
+        if self.beliefs.mucm == 'F':
+            self.rset = True
+            if len(r) == self.inputs[:,0].size:
+                if message == True:
+                    print("\n*** Updating array 'r' of constant variances***")
+                self.r = r
+            else:
+                print("\nERROR: length of 'r' does not match number of data points")
+                exit()
         else:
-            print("\nWARNING: length of 'r' does not match number of data points")
+            print("\nERROR: array 'r' of constant variances not compatible with MUCM T")
             exit()
 
 
@@ -694,6 +698,18 @@ class Posterior:
           np.zeros( [self.Dold.inputs[:,0].size, len(self.Dold.basis.h)] )
         self.Dold.A =\
           np.zeros( [self.Dold.inputs[:,0].size, self.Dold.inputs[:,0].size] )
+
+        # if array of constant variances set in training, this is required
+        if self.Dold.rset == True:
+            if self.Dnew.rset == True:
+                self.Dold.r = \
+                  np.append( self.Dold.r, self.Dnew.r )
+                print("SOFT WARNING: validation 'r' combined with training 'r' (good), "
+                      "and validation 'r' for next V-set will remain the same (perhaps bad).")
+                self.Dnew.r = np.zeros(self.Dnew.r.size)
+            else:
+                self.Dold.r = \
+                  np.append( self.Dold.r, np.zeros( [self.Dnew.inputs[:,0].size] ) )
 
 
     def final_design_points(self, E, final=False):

@@ -58,6 +58,10 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
     #if datab["alt_nugget"] == 'F':
     #    print("\nWARNING: data beliefs must have alt_nugget T. Exiting.")
     #    return None
+    if datab["mucm"] == 'T':
+        print("\nWARNING: data beliefs must have mucm F, "
+              "as sigma (presumably) not valid if extra pointwise variance is added. Exiting.")
+        return None
     if datab["fix_nugget"] == 'T' or  noiseb["fix_nugget"] == 'T':
         print("\nWARNING: data and noise beliefs need fix_nugget F. Exiting.")
         return None

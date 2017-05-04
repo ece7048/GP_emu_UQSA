@@ -6,5 +6,4 @@ delta 1.0 1.0
 sigma 1.0
 nugget 0.00001
 fix_nugget F
-alt_nugget T
 mucm F

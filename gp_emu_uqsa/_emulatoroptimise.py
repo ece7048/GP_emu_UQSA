@@ -173,12 +173,12 @@ class Optimize:
         print("sigma:" , np.round(self.par.sigma,decimals=6))
 
         if self.beliefs.fix_nugget == 'F':
-            if self.beliefs.alt_nugget == 'F':
-                noisesig = np.sqrt(self.par.sigma**2 * (self.par.nugget)/(1.0-self.par.nugget))
-                print("'noise sigma' estimate from nugget:" , noisesig)
-            else:
-                noisesig = self.par.sigma * self.par.nugget
-                print("'noise sigma' estimate from alt nugget:" , noisesig)
+            #if self.beliefs.alt_nugget == 'F':
+            noisesig = np.sqrt(self.par.sigma**2 * (self.par.nugget)/(1.0-self.par.nugget))
+            print("'noise sigma' estimate from nugget:" , noisesig)
+            #else:
+            #    noisesig = self.par.sigma * self.par.nugget
+            #    print("'noise sigma' estimate from alt nugget:" , noisesig)
             
         
         self.optimalbeta()

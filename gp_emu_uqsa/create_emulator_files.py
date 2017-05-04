@@ -40,7 +40,7 @@ def create_emulator_files():
         bf.write("sigma 1.0\n")
         bf.write("nugget 0.0\n")
         bf.write("fix_nugget F\n")
-        bf.write("alt_nugget F\n")
+        #bf.write("alt_nugget F\n")
         bf.write("mucm F\n")
 
     inputs_filename=name + "_inputs"
