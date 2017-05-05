@@ -263,7 +263,7 @@ def nonimp_data(emuls, zs, cm, var_extra, datafiles, maxno=1, act=[], fileStr=""
 
     for m in range(maxno):
         _np.savetxt(nfileStr + "nonimp_" + datafiles[0], nimp_inputs)
-        _np.savetxt(nfileStr + "noninp_" + datafiles[1], nimp_outputs)
+        _np.savetxt(nfileStr + "nonimp_" + datafiles[1], nimp_outputs)
 
     print(len(nimp_inputs), "data points were non-implausible")
 
