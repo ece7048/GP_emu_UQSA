@@ -156,7 +156,7 @@ def load_datafiles(datafiles, orig_minmax):
     except FileNotFoundError as e:
         print("ERROR: datafile(s)", datafiles, "for inputs and/or outputs not found. Exiting.")
         exit()
-    except UserWarning as w
+    except UserWarning as w:
         print("SOFT WARNING: datafile(s)", datafiles, "may be empty (which is fine if intended!).")
         return None, None
 
