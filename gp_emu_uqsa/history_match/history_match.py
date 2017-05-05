@@ -297,7 +297,6 @@ def new_wave_design(emuls, zs, cm, var_extra, datafiles, maxno=1, olhcmult=100, 
     maxno=int(maxno)
     
     sim_x, sim_y = load_datafiles(datafiles, orig_minmax)
-    n = sim_x[:,0].size
 
     ## use an OLHC design for all remaining inputs
     n = dim * int(olhcmult)  # no. of design_points
@@ -305,7 +304,10 @@ def new_wave_design(emuls, zs, cm, var_extra, datafiles, maxno=1, olhcmult=100, 
     olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))] 
     print("olhc_range:", olhc_range)
     filename = "olhc_des"
-    _gd.optLatinHyperCube(dim, n, N, olhc_range, filename, fextra=sim_x)
+    if sim_x == None:
+        _gd.optLatinHyperCube(dim, n, N, olhc_range, filename)
+    else:
+        _gd.optLatinHyperCube(dim, n, N, olhc_range, filename, fextra=sim_x)
     x = _np.loadtxt(filename) # read generated oLHC file in
 
     print("\nCalculating Implausibilities...")

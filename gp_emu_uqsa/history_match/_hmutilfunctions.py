@@ -146,13 +146,17 @@ def load_datafiles(datafiles, orig_minmax):
 
     try:
         sim_x, sim_y = _np.loadtxt(datafiles[0]), _np.loadtxt(datafiles[1])
+
+        ## scale the inputs from the data file
+        for key in orig_minmax.keys():
+            sim_x[:,int(key)] = (sim_x[:,int(key)] - orig_minmax[key][0]) \
+                                  /(orig_minmax[key][1] - orig_minmax[key][0])
+
+        return sim_x, sim_y
     except FileNotFoundError as e:
         print("ERROR: datafile(s)", datafiles, "for inputs and/or outputs not found. Exiting.")
         exit()
+    except UserWarning as w
+        print("SOFT WARNING: datafile(s)", datafiles, "may be empty (which is fine if intended!).")
+        return None, None
 
-    ## scale the inputs from the data file
-    for key in orig_minmax.keys():
-        sim_x[:,int(key)] = (sim_x[:,int(key)] - orig_minmax[key][0]) \
-                              /(orig_minmax[key][1] - orig_minmax[key][0])
-
-    return sim_x, sim_y
