@@ -573,8 +573,8 @@ class Data:
                 self.H[i,j]=self.basis.h[j](self.inputs[i])
        
     # create Estimate of mean
-    #def make_E(self):
-    #    self.E = (self.H).dot(self.par.beta)
+    def make_E(self):
+        self.E = (self.H).dot(self.par.beta)
 
     def make_A(self, s2=1.0 , predict=True):
         self.A = self.K.var(self.inputs, predict)
