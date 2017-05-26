@@ -113,7 +113,7 @@ def imp_plot(emuls, zs, cm, var_extra, maxno=1, olhcmult=100, grid=10, act=[], f
                         ## inactive inputs are masked
                         act_ind_list = [act_ref[str(l)] for l in Eai]
                         ni = __emuc.Data(x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-                        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=True)
+                        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
                         mean = post.mean
                         var  = _np.diag(post.var)
 
@@ -238,7 +238,7 @@ def nonimp_data(emuls, zs, cm, var_extra, datafiles, maxno=1, act=[], fileStr=""
         act_ind_list = [act_ref[str(l)] for l in Eai]
 
         ni = __emuc.Data(sim_x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=True)
+        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
         mean = post.mean
         var  = _np.diag(post.var)
 
@@ -320,7 +320,7 @@ def new_wave_design(emuls, zs, cm, var_extra, datafiles, maxno=1, olhcmult=100, 
         act_ind_list = [act_ref[str(l)] for l in Eai]
 
         ni = __emuc.Data(x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=True)
+        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
         mean = post.mean
         var  = _np.diag(post.var)
 

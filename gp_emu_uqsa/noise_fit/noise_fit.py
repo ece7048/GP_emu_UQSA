@@ -35,7 +35,7 @@ def __read_file(ifile):
 
 
 # currently works only for 1D data
-def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
+def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr="", REG="log"):
     """Try to fit one emualtor to the mean of the data and another emulator to the noise of the data. Results of estimating the noise are saved to the files 'noise-inputs' and 'noise-outputs'.
 
     Args:
@@ -48,6 +48,9 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
         None
 
     """
+
+    #### check transform option
+    ## if not "log", no transformation will be done
     
     #### check consistency
     datac, noisec = __read_file(data), __read_file(noise)
@@ -139,7 +142,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
             u = np.random.randn(t.size)
             tij = post.mean + L.dot(u)
             z_prime = z_prime + 0.5*(t - tij)**2
-        z_prime = __transform(z_prime/float(s))
+        z_prime = __transform(z_prime/float(s), reg=REG)
         np.savetxt('zp-outputs' , z_prime)
 
         # estimate noise levels for validation set
@@ -151,7 +154,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
             u = np.random.randn(tv.size)
             tij = post.mean + L.dot(u)
             z_prime_V = z_prime_V + 0.5*(tv - tij)**2
-        z_prime_V = __transform(z_prime_V/float(s))
+        z_prime_V = __transform(z_prime_V/float(s), reg=REG)
         #np.savetxt('zp-outputs' , z_prime)
 
 
@@ -180,7 +183,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
 
         xp_GN = __emuc.Data(x, None, GN.basis, GN.par, GN.beliefs, GN.K)
         p_GN = __emuc.Posterior(xp_GN, GN.training, GN.par, GN.beliefs, GN.K)
-        r = __untransform(p_GN.mean)
+        r = __untransform(p_GN.mean, reg=REG)
 
         #GD = g.setup(data, datashuffle=False, scaleinputs=False)
         GD.training.set_r(r)
@@ -188,7 +191,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
         ## add estimated r to the validation set for better diagnostics
         v_GN = __emuc.Data(xv, None, GN.basis, GN.par, GN.beliefs, GN.K)
         pv_GN = __emuc.Posterior(v_GN, GN.training, GN.par, GN.beliefs, GN.K)
-        rv = __untransform(pv_GN.mean)
+        rv = __untransform(pv_GN.mean, reg=REG)
         GD.validation.set_r(rv)
 
         ## fix to allow retraining using same training set against validation
@@ -216,7 +219,7 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
 
             ## save data to file
             x_plot = __emuc.Data(x_range, None, GN.basis, GN.par, GN.beliefs, GN.K)
-            p_plot = __emuc.Posterior(x_plot, GN.training, GN.par, GN.beliefs, GN.K)
+            p_plot = __emuc.Posterior(x_plot, GN.training, GN.par, GN.beliefs, GN.K, predict = False)
             mean_plot = p_plot.mean
             p_plot.interval()
             UI, LI = p_plot.UI, p_plot.LI
@@ -224,8 +227,8 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
             nfileStr = fileStr + "_" if fileStr != "" else fileStr
             np.savetxt(nfileStr + 'noise-inputs', x_range )
             np.savetxt(nfileStr + 'noise-outputs', np.transpose(\
-              [np.sqrt(__untransform(mean_plot)),\
-              np.sqrt(__untransform(LI)), np.sqrt(__untransform(UI))] ) )
+              [np.sqrt(__untransform(mean_plot, reg=REG)),\
+              np.sqrt(__untransform(LI, reg=REG)), np.sqrt(__untransform(UI, reg=REG))] ) )
 
             break
 
