@@ -239,3 +239,42 @@ def noisefit(data, noise, stopat=20, olhcmult=100, samples=200, fileStr=""):
 
     return None
 
+
+## posterior means of mean prediction and noise prediction
+def noisepost(data, noise, X_inputs):
+
+    #### load config files for data and noise
+
+    ## note that inputs and outputs are already in same order for both
+    GD = g.setup("config-data-recon",  datashuffle = False, scaleinputs = False)
+    GN = g.setup("config-noise-recon", datashuffle = False, scaleinputs = False)
+
+
+    #### prediction of r at known data points 'x'
+
+    ## get r values from the noise emulator
+    x = GD.training.inputs
+    GN_mean, GN_var = g.posterior(GN, x, predict=True)
+    r = np.exp( GN_mean + np.diag(GN_var)/2.0 )
+
+    ## set r values in the data emulator
+    GD.training.set_r(r)
+    GD.training.make_A(s2 = GD.par.sigma**2 , predict=True)
+
+
+    #### prediction of r at new data points 'X'
+
+    ## get R values from the noise emulator
+    X = X_inputs
+    GN_mean, GN_var = g.posterior(GN, X, predict=True)
+    R = np.exp( GN_mean + np.diag(GN_var)/2.0 ) ## mean of noise prediction
+
+    ## set R values for new points (X) Data object
+    xp = __emuc.Data(X, None, GD.basis, GD.par, GD.beliefs, GD.K)
+    xp.set_r(R)
+    xp.make_A(s2 = GD.par.sigma**2 , predict=True)
+    post = __emuc.Posterior(xp, GD.training, GD.par, GD.beliefs, GD.K, predict=True)
+    GD_mean = post.mean ## mean of mean prediction
+    
+    ## return the predictive mean for data and noise
+    return GD_mean, R
