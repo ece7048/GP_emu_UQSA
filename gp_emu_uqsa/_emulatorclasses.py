@@ -599,7 +599,7 @@ class Data:
 
 ### posterior distrubution, and also some validation tests
 class Posterior:
-    def __init__(self, Dnew, Dold, par, beliefs, K, predict=True):
+    def __init__(self, Dnew, Dold, par, beliefs, K, predict=False):
         self.Dnew = Dnew
         self.Dold = Dold
         self.par = par
@@ -631,7 +631,7 @@ class Posterior:
     def make_var(self):
 
         # self.predict: distinction between prediction and estimation
-        #self.Dnew.make_A(s2=(self.par.sigma**2), predict=self.predict) 
+        self.Dnew.make_A(s2=(self.par.sigma**2), predict=self.predict) 
 
         invA_H = linalg.solve( self.Dold.A , self.Dold.H )
 
