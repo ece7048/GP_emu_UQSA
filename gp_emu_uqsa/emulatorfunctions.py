@@ -242,7 +242,7 @@ def posterior(E, x, predict=True):
 
     ## tests here to make sure that x is compatible with E
     if x[0,:].size != E.training.inputs[0,:].size:
-        print("ERROR: test points have different number of columns"
+        print("ERROR: test points have different number of columns "
               "to data in emulator. Exiting.")
         exit()
 
@@ -271,7 +271,7 @@ def posterior_sample(E, x, predict=True):
 
     ## tests here to make sure that x is compatible with E
     if x[0,:].size != E.training.inputs[0,:].size:
-        print("ERROR: test points have different number of columns"
+        print("ERROR: test points have different number of columns "
               "to data in emulator. Exiting.")
         exit()
 
