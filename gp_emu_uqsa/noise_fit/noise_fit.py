@@ -254,21 +254,23 @@ def noisepost(data, noise, X_inputs):
 
     ## get r values from the noise emulator
     x = GD.training.inputs
-    GN_mean, GN_var = g.posterior(GN, x, predict=True)
+    x1 = __emuc.Data(x, None, GN.basis, GN.par, GN.beliefs, GN.K)
+    p1 = __emuc.Posterior(x1, GN.training, GN.par, GN.beliefs, GN.K, predict=True)
+    GN_mean, GN_var = p1.mean, p1.var
     r = np.exp( GN_mean + np.diag(GN_var)/2.0 )
 
     ## set r values in the data emulator
     GD.training.set_r(r)
     GD.training.make_A(s2 = GD.par.sigma**2 , predict=True)
 
-
     #### prediction of r at new data points 'X'
 
     ## get R values from the noise emulator
     X = X_inputs
-    GN_mean, GN_var = g.posterior(GN, X, predict=True)
+    x2 = __emuc.Data(X, None, GN.basis, GN.par, GN.beliefs, GN.K)
+    p2 = __emuc.Posterior(x2, GN.training, GN.par, GN.beliefs, GN.K, predict=True)
+    GN_mean, GN_var = p2.mean, p2.var
     R = np.exp( GN_mean + np.diag(GN_var)/2.0 ) ## mean of noise prediction
-
     ## set R values for new points (X) Data object
     xp = __emuc.Data(X, None, GD.basis, GD.par, GD.beliefs, GD.K)
     xp.set_r(R)
