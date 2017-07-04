@@ -7,6 +7,8 @@ Redesign history matching based on conversation with Ian Vernon
 
 ## high priority -- BUGS
 
+In noise_fit(), zp_outputs is only made properly when datasize is divisible by the number of sets - I should generalize this
+
 ## medium priority -- helpful features
 
 ## low priority -- small corrections

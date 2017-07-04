@@ -125,7 +125,7 @@ def train(E, auto=True, message=False, no_retrain=False):
 
 
 # plotting function 
-def plot(E, plot_dims, fixed_dims=[], fixed_vals=[], mean_or_var="mean", customLabels=[], points=False, predict=True):
+def plot(E, plot_dims, fixed_dims=[], fixed_vals=[], mean_or_var="mean", customLabels=[], points=False, predict=False):
     """Do plot of the Emulator posterior against 1 or 2 input variables, while holding the other inputs at constant values.
 
     Args:
@@ -242,7 +242,7 @@ def posterior(E, x, predict=True):
 
     ## tests here to make sure that x is compatible with E
     if x[0,:].size != E.training.inputs[0,:].size:
-        print("ERROR: test points have different number of columns"
+        print("ERROR: test points have different number of columns "
               "to data in emulator. Exiting.")
         exit()
 
@@ -271,7 +271,7 @@ def posterior_sample(E, x, predict=True):
 
     ## tests here to make sure that x is compatible with E
     if x[0,:].size != E.training.inputs[0,:].size:
-        print("ERROR: test points have different number of columns"
+        print("ERROR: test points have different number of columns "
               "to data in emulator. Exiting.")
         exit()
 
