@@ -3,8 +3,9 @@
 ## major dev ideas
 Get sensitivity working for a non-linear mean funtion
 
+Redesign history matching based on conversation with Ian Vernon
+
 ## high priority -- BUGS
-Is predict=True in post the best default? Maybe not...
 
 ## medium priority -- helpful features
 
