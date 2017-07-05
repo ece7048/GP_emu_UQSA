@@ -254,28 +254,42 @@ class Optimize:
             if nonPSDfail == False:
 
                 if self.print_message:
-                    print(res, "\n")
+                    print(res)
                     if res.success != True:
                         print(res.message, "Not succcessful.")
-            
+
+                ## check more than 1 iteration was done
+                nfev = res.nfev
+                not_fit = True if nfev == 1 else False
+
                 ## result of fit
                 sig_str = "" 
                 if self.beliefs.mucm == 'T':
                     self.sigma_analytic_mucm(self.data.K.untransform(res.x))
                     sig_str = "  sig: " + str(np.around(self.par.sigma,decimals=4))
-                print("  hp: ",\
-                    np.around(self.data.K.untransform(res.x),decimals=4),\
-                    " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
+                if not_fit == False and res.success == True:
+                    print("  hp: ",\
+                        np.around(self.data.K.untransform(res.x),decimals=4),\
+                        " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
+                else:
+                    if not_fit:
+                        print("  WARNING: Only 1 iteration for",\
+                            np.around(self.data.K.untransform(res.x),decimals=4),\
+                            ", not fitted.")
+                    if res.success == False:
+                        print("  WARNING: Unsuccessful termination for",\
+                            np.around(self.data.K.untransform(res.x),decimals=4),\
+                            ", not fitted.")
+                if self.print_message:
+                    print("\n")
                     
                 ## set best result
-                if (res.fun < best_min) or first_try:
+                if (res.fun < best_min or first_try) \
+                  and not_fit == False and res.success == True:
                     best_min = res.fun
                     best_x = self.data.K.untransform(res.x)
                     best_res = res
                     first_try = False
-
-            else:
-                print("Trying next guess...")
 
         print("********")
         if first_try == False:
@@ -295,8 +309,7 @@ class Optimize:
             self.data.make_A(s2) # including r still
             self.data.make_H()
         else:
-            print("ERROR: No optimization was made due to non-PSD errors. "
-                  "Increase 'tries'. Exiting.")
+            print("ERROR: No optimization was made. Exiting.")
             exit()
 
 
@@ -372,7 +385,7 @@ class Optimize:
                                            )
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
         return LLH, grad_LLH
@@ -401,8 +414,8 @@ class Optimize:
             self.par.sigma = np.sqrt(sig2)
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  In sigma_analytic_mucm(): "
-                  "Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: In sigma_analytic_mucm(): "
+                  "Matrix not PSD for", x, ", not fitted.")
             exit()
 
         return
@@ -487,7 +500,7 @@ class Optimize:
                                 )
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
         return LLH, grad_LLH
