@@ -44,7 +44,7 @@ class Optimize:
             for i in range(0, self.data.inputs[0].size):
                 data_range = np.amax(self.data.inputs[:,i])\
                            - np.amin(self.data.inputs[:,i])
-                d_bounds_t.append([0.001,data_range])
+                d_bounds_t.append([0.01,data_range])
                 print("    delta" , i , '[{:04.4f} , {:04.4f}]'.format(d_bounds_t[i][0] , d_bounds_t[i][1]) )
         else:
             print("User provided bounds for delta:")
@@ -57,7 +57,7 @@ class Optimize:
                 if config.delta_bounds[i] == []:
                     data_range = np.amax(self.data.inputs[:,i])\
                                - np.amin(self.data.inputs[:,i])
-                    d_bounds_t.append([0.001,data_range])
+                    d_bounds_t.append([0.01,data_range])
                     print("    delta" , i , '[{:04.4f} , {:04.4f}]'.format(d_bounds_t[i][0] , d_bounds_t[i][1]), "(data)")
                 else:
                     d_bounds_t.append(config.delta_bounds[i])
@@ -83,7 +83,7 @@ class Optimize:
             # use output range for sigma
             data_range = np.sqrt( np.amax(self.data.outputs)\
                        - np.amin(self.data.outputs) )
-            s_bounds_t.append([0.001,data_range])
+            s_bounds_t.append([0.01,data_range])
             print("    sigma  " , '[{:04.4f} , {:04.4f}]'.format(s_bounds_t[0][0] , s_bounds_t[0][1]) )
         else:
             print("User provided bounds for sigma:")
@@ -117,7 +117,7 @@ class Optimize:
 
         d_size = self.data.K.d.size
         for i in range(0, d_size):
-            self.cons.append([self.data.K.transform(0.001),None])
+            self.cons.append([self.data.K.transform(0.01),None])
          
         if self.beliefs.fix_nugget == 'F':
             self.cons.append([None,None])

@@ -225,7 +225,7 @@ To set bounds, a list of lists must be constructed, the inner lists specifying t
 
 * __tries__ : is how many times (integer) to try to fit the emulator for each round of training e.g. ``` tries 5 ```
 
-* __constraints__ : which type of constraints to use, can be ```bounds``` (use the bounds in the configuration file), the default option ```standard``` (keep delta above a small value (0.001) for numerical stability), or ```none``` (unconstrained).
+* __constraints__ : which type of constraints to use, can be ```bounds``` (use the bounds in the configuration file), the default option ```standard``` (keep delta above a small value (0.01) for numerical stability), or ```none``` (unconstrained).
 
 
 
