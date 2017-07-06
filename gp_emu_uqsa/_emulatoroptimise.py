@@ -5,6 +5,8 @@ from scipy.optimize import minimize
 #from scipy.optimize import differential_evolution
 import time
 
+from scipy.optimize import check_grad
+
 ## use '@timeit' to decorate a function for timing
 def timeit(f):
     def timed(*args, **kw):
@@ -189,6 +191,13 @@ class Optimize:
         first_try = True
         best_min = 10000000.0
 
+        ## for checks on if function gradient is correct
+        func_m = lambda x: self.loglikelihood_mucm(x, debug="func")
+        grad_m = lambda x: self.loglikelihood_mucm(x, debug="grad")
+        func_g = lambda x: self.loglikelihood_gp4ml(x, debug="func")
+        grad_g = lambda x: self.loglikelihood_gp4ml(x, debug="grad")
+        debug_grad = True
+
         ## params - number of paramaters that need fitting
         params = self.data.K.d.size
         if self.beliefs.fix_nugget == 'F':
@@ -232,19 +241,33 @@ class Optimize:
                 ## constraints - must use bounds for L-BFGS-B method
                 if self.config.constraints != "none":
                     if self.beliefs.mucm == 'T':
+                        print("\nInitial guess:", self.data.K.untransform(x_guess))
+                        if debug_grad: print("grad error initial guess:", check_grad(func_m, grad_m, x_guess))
                         res = minimize(self.loglikelihood_mucm,
                           x_guess, method = 'L-BFGS-B', jac=True, bounds=self.cons)
+                        if debug_grad: print("grad error optimized val:", check_grad(func_m, grad_m, res.x))
                     else:
+                        print("\nInitial guess:", self.data.K.untransform(x_guess))
+                        if debug_grad: print("grad error initial guess:", check_grad(func_g, grad_g, x_guess))
                         res = minimize(self.loglikelihood_gp4ml,
                           x_guess, method = 'L-BFGS-B', jac=True, bounds=self.cons)
+                        if debug_grad: print("grad error optimized val:", check_grad(func_g, grad_g, res.x))
+
                 ## no constraints
                 else:
                     if self.beliefs.mucm == 'T':
+                        print("\nInitial guess:", self.data.K.untransform(x_guess))
+                        if debug_grad: print("grad error initial guess:", check_grad(func_m, grad_m, x_guess))
                         res = minimize(self.loglikelihood_mucm,
                           x_guess, method = 'L-BFGS-B', jac=True)
+                        if debug_grad: print("grad error optimized val:", check_grad(func_m, grad_m, res.x))
                     else:
+                        print("\nInitial guess:", self.data.K.untransform(np.array(x_guess)))
+                        if debug_grad: print("grad error initial guess:", check_grad(func_g, grad_g, x_guess))
                         res = minimize(self.loglikelihood_gp4ml,
                           x_guess, method = 'L-BFGS-B', jac=True)
+                        if debug_grad: print("grad error optimized val:", check_grad(func_g, grad_g, res.x))
+
             except TypeError as e:
                 #print("Picked up the Type Error from non-PSD")
                 nonPSDfail = True
@@ -315,7 +338,8 @@ class Optimize:
 
 
     # the loglikelihood provided by MUCM
-    def loglikelihood_mucm(self, x):
+    def loglikelihood_mucm(self, x, debug=False):
+        if debug != False: x = np.array(x)
         x = self.data.K.untransform(x)
         self.data.K.set_params(x)
         self.data.make_A()
@@ -388,7 +412,12 @@ class Optimize:
             print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
-        return LLH, grad_LLH
+        if debug == False:
+            return LLH, grad_LLH
+        elif debug == "func":
+            return LLH
+        elif debug == "grad":
+            return grad_LLH
 
 
     ## calculate sigma analytically - used for the MUCM method
@@ -422,7 +451,8 @@ class Optimize:
 
 
     # the loglikelihood provided by Gaussian Processes for Machine Learning 
-    def loglikelihood_gp4ml(self, x):
+    def loglikelihood_gp4ml(self, x, debug=False):
+        if debug != False: x = np.array(x)
         x = self.data.K.untransform(x)
         self.data.K.set_params(x[:-1]) # not including sigma in x
         self.par.sigma = x[-1]
@@ -503,7 +533,12 @@ class Optimize:
             print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
-        return LLH, grad_LLH
+        if debug == False:
+            return LLH, grad_LLH
+        elif debug == "func":
+            return LLH
+        elif debug == "grad":
+            return grad_LLH
 
 
     # calculates the optimal value of the mean hyperparameters

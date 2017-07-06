@@ -6,6 +6,7 @@ Get sensitivity working for a non-linear mean funtion
 Redesign history matching based on conversation with Ian Vernon
 
 ## high priority -- BUGS
+Check the diagonal correction in the gradient of loglikelihood_gp4ml function
 
 In noise_fit(), zp_outputs is only made properly when datasize is divisible by the number of sets - I should generalize this
 
