@@ -10,7 +10,7 @@
 import numpy as _np
 import scipy.spatial.distance as _dist
 
-def optLatinHyperCube(dim=None, n=None, N=None, minmax=None, filename="inputs", fextra=None):
+def optLatinHyperCube(dim=None, n=None, N=None, minmax=None, filename="inputs", fextra=None, save=True):
     """Design input data using an optimisated latin hypercube design and save it to a file.
 
     Args:
@@ -20,9 +20,10 @@ def optLatinHyperCube(dim=None, n=None, N=None, minmax=None, filename="inputs", 
         minmax (list): Value interval on each dimension e.g.  [ [0.0,1.0] , [0.0,1.0] ]
         filename (str): Name of file
         fextra (nparray): Numpy array of data with same number of columns as dim
+        save (bool): Default True. Whether to save to file.
 
     Returns:
-        None
+        None if save == True else oLHC design
 
     """
 
@@ -69,23 +70,28 @@ def optLatinHyperCube(dim=None, n=None, N=None, minmax=None, filename="inputs", 
         else:
             xt = x
 
-        # calculate and check maximin
-        maximin = _np.argmin( _dist.pdist(xt,'sqeuclidean') )
-        if k==0 or maximin > best_maximin:
-            best_D = _np.copy(x)
-            best_k = k
-            best_maximin = maximin
-                
-    D = best_D
-    print("Optimal LHC design was no." , best_k)#, " with D:\n" , D)
+        if N > 1:
+            # calculate and check maximin
+            maximin = _np.argmin( _dist.pdist(xt,'sqeuclidean') )
+            if k==0 or maximin > best_maximin:
+                best_D = _np.copy(x)
+                best_k = k
+                best_maximin = maximin
 
-    print("Saving inputs to file...")
+    D, best_k = (best_D, best_k) if N > 1 else (x, 1)
+    if N > 1:  print("Optimal LHC design was no." , best_k)#, " with D:\n" , D)
+
     # unscale the simulator input
     inputs = _np.array(minmax)
     for i in range(0,dim):
         D[:,i] = D[:,i]*(inputs[i,1]-inputs[i,0]) + inputs[i,0]
-    # save to file
-    _np.savetxt(filename, D, delimiter=" ", fmt='%.8f')
 
-    print("DONE!")
-    return None
+    if save:
+        print("Saving inputs to file...")
+        # save to file
+        _np.savetxt(filename, D, delimiter=" ", fmt='%.8f')
+        print("DONE!")
+        return None
+    else:
+        print("Not saving to file, returning inputs from function.")
+        return D

@@ -16,3 +16,5 @@ In noise_fit(), zp_outputs is only made properly when datasize is divisible by t
 
 ## documentation
 Add example for History Matching routines (include an example of how to run in parallel)
+
+Update docs for optimalLatinHyperCube() function
