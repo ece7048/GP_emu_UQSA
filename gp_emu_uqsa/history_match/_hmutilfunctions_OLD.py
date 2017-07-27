@@ -25,15 +25,17 @@ def emulsetup(emuls):
                   "using updated beliefs files, "
                   "so they are missing 'active_index' and 'input_minmax'. Exiting.")
             exit()
-
+        sets = make_sets(ai)
         for i in range(len(ai)):
+            #minmax[str(ai[i])] = mm[i]
             ## scale minmax into appropriate range
             minmax[str(ai[i])] = list( (_np.array(mm[i]) - mm[i][0])/(mm[i][1] - mm[i][0]) )
             orig_minmax[str(ai[i])] = list( (_np.array(mm[i])) )
 
+    print("\nactive index pairs:" , sets)
     print("\nminmax for active inputs:" , minmax)
     print("original units minmax for active inputs:", orig_minmax)
-    return minmax, orig_minmax
+    return sets, minmax, orig_minmax
 
 
 def ref_act(minmax):
@@ -45,8 +47,6 @@ def ref_act(minmax):
         count = count + 1
     print("\nrelate active_indices to integers:" , act_ref)
     return act_ref
-
-## NEW - CHECK THAT DIMS OF TEST DESIGN MATCH THOSE NEEDED FOR EMULS
 
 
 def ref_plt(act):
@@ -71,62 +71,43 @@ def check_act(act, sets):
     return True
 
 
-#def imp_colormap(cmap):
-#    n = 100
-#    gc = 0.5 # green
-#    rc = 0.91 # red
-#    cb   = _np.linspace(gc, rc, n)
-#    new_cmap = _colors.LinearSegmentedColormap.from_list(
-#        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=gc, b=rc), cmap( cb ) )
-#    return new_cmap
-
-def imp_colormap():
-    return _colors.LinearSegmentedColormap.from_list('imp', 
-                                        [(0,    '#90ff3c'),
-                                         (0.50, '#ffff3c'),
-                                         (0.80, '#e2721b'),
-                                        (1,    '#db0100')], N=256)
-
-def odp_colormap():
-    return _colors.LinearSegmentedColormap.from_list('odp', 
-                                        [(0,    '#696988'),
-                                         (1.0/float(256),    '#ffffff'),
-                                         (0.20, '#93ffff'),
-                                         (0.45, '#5190fc'),
-                                         (0.65, '#0000fa'),
-                                        (1,    '#db00fa')], N=256)
-
-def colormap(cmap, b, t):
+def imp_colormap(cmap):
     n = 100
-    cb   = _np.linspace(b, t, n)
+    gc = 0.5 # green
+    yc1 = 0.525 # yellow 1
+    yc2 = 0.8 # yellow 2
+    rc = 1.0 # red
+    green = _np.linspace(gc, yc1, 5*n/10)   # 00-50% green
+    yellow = _np.linspace(yc1, yc2, 4*n/10) # 50-80% yellow
+    red   = _np.linspace(yc2, rc, 1*n/10)   # 80-100% red
+    cb = _np.append( _np.append(green, yellow) , red )
     new_cmap = _colors.LinearSegmentedColormap.from_list(
-        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=b, b=t), cmap( cb ) )
+        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=gc, b=rc),
+        cmap( cb ) )
     return new_cmap
 
 
-def make_plots(s, plt_ref, cm, maxno, ax, imp, odp, minmax=None, recon=False, imp_cb=[], odp_cb=[], INTERP='none'):
+def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False, imp_cb=[], odp_cb=[]):
 
-    #imp_pal = colormap(_plt.get_cmap('jet'), 0.5, 0.91)
-    #odp_pal = colormap(_plt.get_cmap('gist_rainbow'), 0.51, 0.95)
-    imp_pal = imp_colormap()
-    odp_pal = odp_colormap()
+    imp_pal = _plt.get_cmap('jet')
+    imp_pal = imp_colormap(imp_pal)
+    odp_pal = _plt.get_cmap('afmhot')
 
-    odp = _np.ma.masked_where(odp == 0, odp)
+    (odp, imp) = (ODP, IMP) if recon else (ODP[maxno-1], IMP[maxno-1])
+
+    opd = _np.ma.masked_where(odp == 0, odp)
     ax[plt_ref[str(s[0])],plt_ref[str(s[1])]].set_axis_bgcolor('darkgray')
  
     ex = None if recon else ( minmax[str(s[0])][0], minmax[str(s[0])][1],
                               minmax[str(s[1])][0], minmax[str(s[1])][1] )
 
-    #INTERP = 'none'
-    #INTERP = 'gaussian'
-
     im_imp = ax[plt_ref[str(s[1])],plt_ref[str(s[0])]].imshow(imp.T,
       origin = 'lower', cmap = imp_pal, extent = ex,
-      vmin=imp_cb[0], vmax=imp_cb[1], interpolation=INTERP )
+      vmin=imp_cb[0], vmax=imp_cb[1], interpolation='none' )
 
     im_odp = ax[plt_ref[str(s[0])],plt_ref[str(s[1])]].imshow(odp.T,
       origin = 'lower', cmap = odp_pal, extent = ex,
-      vmin=odp_cb[0], vmax=odp_cb[1], interpolation=INTERP )
+      vmin=odp_cb[0], vmax=odp_cb[1], interpolation='none' )
 
     _plt.colorbar(im_imp, ax=ax[plt_ref[str(s[1])],plt_ref[str(s[0])]])
     _plt.colorbar(im_odp, ax=ax[plt_ref[str(s[0])],plt_ref[str(s[1])]])
