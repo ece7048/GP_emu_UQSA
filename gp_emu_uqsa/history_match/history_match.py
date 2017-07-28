@@ -1,29 +1,23 @@
-# this is attempt to redo history matching
-        ## minmax seems to be the corresponding minmax pairs...
-        ## orig_minmax seems to be the pre-scaling minmax values...
-
 import gp_emu_uqsa.design_inputs as _gd
 import gp_emu_uqsa._emulatorclasses as emuc
 import numpy as _np
 from scipy import linalg
 import matplotlib.pyplot as _plt
 from ._hmutilfunctions import *
+import pickle
 
 
 ## using the information in the emulator files, generate an appropriate first design
 def first_design(emuls, n):
 
     minmax, orig_minmax = emulsetup(emuls)
-    act_ref = ref_act(minmax) ## references the active indices to an ordered list of integers
-
+    act_ref = ref_act(minmax)
     dim = len(act_ref)
-
-    print("\nDIM:", dim)
-    print("\nMINMAX:", minmax)
+    #print("\nDIM:", dim)
+    #print("\nMINMAX:", minmax)
 
     olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
-
-    print("\nOLHC:", olhc_range)
+    #print("\nOLHC:", olhc_range)
 
     design = _gd.optLatinHyperCube(dim, n, 1, olhc_range, "blank", save = False)
 
@@ -33,27 +27,40 @@ def first_design(emuls, n):
 class Wave:
     """Stores data for wave of HM search."""
     def __init__(self, emuls, zs, cm, var, tests):
-        ## non-data stuff IN
+        ## passed in
         self.emuls = emuls
-        self.zs = zs
-        self.var = var
-        self.cm = cm
-        ## data stuff IN
-        self.TESTS = tests
-        # float16 saves memory
-        self.I = _np.empty((self.TESTS[:,0].size,len(self.emuls)),dtype=_np.float16)
-        ## to be calculated
-        self.NIMP = []  # for storing all found imp points (index into test_points..?)
-        self.NROY_filler = []  # create a design to fill NROY space based of found NIMP points
-        self.NROY_design = []  # representative inputs from NROY space - could do outside...
+        self.zs, self.var, self.cm = zs, var, cm
+        if tests != None:
+            self.TESTS = tests.astype(_np.float16)
+            self.I = _np.empty((self.TESTS[:,0].size,len(self.emuls)),dtype=_np.float16)
+        else:
+            self.TESTS = []
+            self.I = []
 
-        #### WE MAY BE ABLE TO COMBINE THESE NOW WE DON'T MAKE AN oLHC HERE
-        #### BUT MAY BE NEEDED FOR PRODUCING THE NEW WAVE FILLER LATER
+        self.NIMP = []  # for storing all found imp points (index into test_points..?)
+        self.NROY = []  # create a design to fill NROY space based of found NIMP points
+
         ## minmax seems to be the corresponding minmax pairs...
         ## orig_minmax seems to be the pre-scaling minmax values...
         self.minmax, self.orig_minmax = emulsetup(emuls)
-        self.act_ref = ref_act(self.minmax) ## references the active indices to an ordered list of integers
+        self.act_ref = ref_act(self.minmax)  # refs active indices to ordered integers
 
+
+    ## pickle a list of relevant data
+    def save(self, filename):
+        print("Pickling wave data in", filename, "...")
+        w = [ self.TESTS, self.I, self.NIMP ]  # test these 3 for now
+        with open(filename, 'wb') as output:
+            pickle.dump(w, output, pickle.HIGHEST_PROTOCOL)
+        return
+
+    ## unpickle a list of relevant data
+    def load(self, filename):
+        print("Unpickling wave data in", filename, "...")
+        with open(filename, 'rb') as input:
+            w = pickle.load(input)
+        self.TESTS, self.I, self.NIMP = w[0], w[1], w[2]
+        return
 
     ## search through the test inputs to find non-implausible points
     def calc_imps(self):
@@ -74,7 +81,7 @@ class Wave:
             print("Matching indices in design array:", act_ind_list)
 
             ## NOTES
-            #### K** is 1 - does this mean estimation not prediction?
+            #### K** is 1 - estimation not prediction?
 
             Hnew = _np.empty([len(E.training.basis.h)]) 
             beta = E.training.par.beta
@@ -86,14 +93,6 @@ class Wave:
             invA_H = linalg.solve( K, Hold )
             Q = Hold.T.dot(invA_H)  # H A^-1 H
             T = linalg.solve(K, y - Hold.dot(beta))
-
-            #L = np.linalg.cholesky(self.data.A) 
-            #w = np.linalg.solve(L,self.data.H)
-            #Q = w.T.dot(w) # H A^-1 H
-
-            ## single point test for now...
-            #x = self.TESTS[0, act_ind_list]
-            #if True:
 
             print("Calculating implausibilites for output", o, "...")
             ## loop over test points
@@ -110,8 +109,10 @@ class Wave:
                 pmean = Hnew.dot(beta) + covar.T.dot(T)
                 pvar  = s2*( Knew - covar.T.dot( linalg.solve( K, covar ) ) )
 
-                ## calculate implausibility^2 values for each output
+                ## calculate implausibility^2 values for point p, output o
                 self.I[p,o] = _np.sqrt( ( pmean - z )**2 / ( pvar + v ) )
+
+                ## compare results from different precisions -> differences seem unimportant
                 #print("test point:", p, "I:", I[p,o])
                 #I2_16[p,o] = ( pmean - z )**2 / ( pvar + v )
                 #I2_32[p,o] = ( pmean - z )**2 / ( pvar + v )
@@ -119,187 +120,74 @@ class Wave:
                 
         return
 
+    ## find all the non-implausible points in the test points
+    def find_NIMP(self, maxno=1):
 
-    def find_NIMP(self, cm, maxno):
-
-        self.NIMP = []  # make it empty again because we may call twice..?
+        self.NIMP = []  # make empty because may call twice (different maxnos)
 
         ## SHOULD THROW ERROR IF WE HAVEN'T CALCULATED IMP VALUES YET
 
         P = self.TESTS[:,0].size
-
-        #Imaxes = _np.empty([P,maxno], dtype=_np.float16)
         for r in range(P):
-            #Imaxes[r,:] = _np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno:]
             ## find maximum implausibility across different outputs
             Imaxes = _np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno:]
-            if Imaxes[-(maxno)] < cm: # check cut-off using this value
-                self.NIMP.append(self.TESTS[r])
+            ## check cut-off
+            if Imaxes[-(maxno)] < self.cm:  self.NIMP.append(self.TESTS[r])
+
         self.NIMP = _np.asarray(self.NIMP)
-        #print("NIMP points:", self.NIMP)
         print("NIMP fraction:", 100*float(len(self.NIMP))/float(P), "%")
 
         return
 
 
-    def plot_bins(self, cm, maxno, aiX, aiY, grid=10):
-        
-        P = self.TESTS[:,0].size
-
-        IMP = _np.full( (grid,grid), 10000. )
-        ODP = _np.zeros( (grid,grid,2) )  # third dim is pass (index 0) or fail index (1)
-
-        ## find minX, maxX, dX etc.
-        (minX, maxX) = self.minmax[str(aiX)]
-        (minY, maxY) = self.minmax[str(aiY)]
-        dX = (maxX-minX)/float(grid)
-        dY = (maxY-minY)/float(grid)
-        ail = [self.act_ref[str(l)] for l in [aiX, aiY]]
-
-        for r in range(P):
-            ## find maximum implausibility across different outputs
-            Imaxes = _np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno]
-
-            # calc. I and J index for bins
-            I = int( (self.TESTS[r,ail[0]] - minX)/dX )
-            J = int( (self.TESTS[r,ail[1]] - minY)/dY )
-
-            if Imaxes < cm:
-                ODP[I,J,0] += 1  # increase pass number
-            else:
-                ODP[I,J,1] += 1  # increase fail number
-
-            # check if less implausible than current min
-            if Imaxes < IMP[I,J]:  IMP[I,J] = Imaxes
-
-        for I in range(grid):
-            for J in range(grid):
-                ODP[I,J,0] = ODP[I,J,0] / ( ODP[I,J,0] + ODP[I,J,1] )
-
-        return IMP, ODP[:,:,0]
-
-
-    def big_plot_bins(self, cm, maxno, grid=10, INTERP='none'):
-
-        ## space for all plots, and reference index to subplot indices
-        print("Creating plot objects... may take some time...")
-        rc = len(self.act_ref)
-        fig, ax = _plt.subplots(nrows = rc, ncols = rc)
-
-        ## create list of all pairs of active inputs
-        sets = make_sets( [ self.act_ref[key] for key in self.act_ref.keys() ] )
-        print("SETS:", sets)
-
-        imp_cb = [0,cm]
-        odp_cb = [0,1]
-
-        ## loop over plot_bins()
-        for s in sets:
-            IMP, ODP = self.plot_bins(cm, maxno, s[0], s[1], grid)
-            make_plots(s, self.act_ref, cm, maxno, ax, IMP, ODP, minmax=self.minmax, imp_cb=imp_cb, odp_cb=odp_cb, INTERP=INTERP)
-
-        ## calls to make plot
-        plot_options(self.act_ref, ax, fig, self.minmax)
-        _plt.show()
-
-        return 0
-
-
-    def big_plot_hexbins(self, cm, maxno, grid=10, INTERP='none'):
-
-        ## space for all plots, and reference index to subplot indices
-        print("Creating plot objects... may take some time...")
-        rc = len(self.act_ref)
-        fig, ax = _plt.subplots(nrows = rc, ncols = rc)
-
-        ## create list of all pairs of active inputs
-        sets = make_sets( [ self.act_ref[key] for key in self.act_ref.keys() ] )
-        print("SETS:", sets)
-
-        imp_cb = [0,cm]
-        odp_cb = [0,1]
-
-        P = self.TESTS[:,0].size
-        Imaxes = _np.array( [_np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno]
-                             for r in range(P)] )
-
-        ## loop over plot_bins()
-        for s in sets:
-            ail = [self.act_ref[str(l)] for l in [s[0], s[1]]]
-            ex = ( self.minmax[str(s[0])][0], self.minmax[str(s[0])][1],
-                   self.minmax[str(s[1])][0], self.minmax[str(s[1])][1] )
-
-            im_imp = ax[ail[1],ail[0]].hexbin(
-              self.TESTS[:,ail[0]], self.TESTS[:,ail[1]], C = Imaxes,
-              gridsize=grid, cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1],
-              reduce_C_function=_np.min)
-
-            im_odp = ax[ail[0],ail[1]].hexbin(
-              self.TESTS[:,ail[0]], self.TESTS[:,ail[1]], C = Imaxes<cm,
-              gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1])
-
-            _plt.colorbar(im_imp, ax=ax[ail[1],ail[0]])
-            _plt.colorbar(im_odp, ax=ax[ail[0],ail[1]])
-
-            #make_plots(s, self.act_ref, cm, maxno, ax, IMP, ODP, minmax=self.minmax, imp_cb=imp_cb, odp_cb=odp_cb, INTERP=INTERP)
-
-        ## calls to make plot
-        plot_options(self.act_ref, ax, fig, self.minmax)
-        _plt.show()
-
-        return 0
-
-
-def prev_imp_plot(emuls, zs, cm, var_extra, maxno=1, olhcmult=100, grid=10, act=[], fileStr="", plot=True):
-    """Create an implausibility and optical depth plot, made of subplots for each pair of active inputs (or only those specified). Implausibility plots in the lower triangle, optical depth plots in the upper triangle. The diagonal is blank, and implausibility plots are paired with optical depth plots across the diagonal.
-
-    Args:
-        emuls (Emulator list): list of Emulator instances
-        zs (float list): list of output values to match
-        cm (float list): cut-off for implausibility
-        var_extra (float list): extra (non-emulator) variance on outputs
-        maxno (int): which maximum implausibility to consider, default 1
-        olhcmult (int): option for size of oLHC design across other inputs not in the considered pair, size = olhcmult*(no. active inputs - 2), default 100
-        grid (int): divisions of each input range to make, with values of each input for a subplot centred on the gridpoint, default 10
-        act (int list): list of active inputs for plot, default [] (all inputs)
-        fileStr (str): string to prepend to output files, default ""
-        plot (bool): choice to plot (e.g. False for batches), default True
-
-    Returns:
-        None
-
-    """
-
-    sets, minmax, orig_minmax = emulsetup(emuls)
-    check_act(act, sets)
-    act_ref = ref_act(minmax)
-    plt_ref = ref_plt(act)
-
-    num_inputs = len(minmax) # number of inputs we'll look at
-    dim = num_inputs - 2 # dimensions of input that we'll change with oLHC
-
-    maxno=int(maxno)
-    IMP , ODP = [], [] ## need an IMP and ODP for each I_max
-    for i in range(maxno):
-        IMP.append( _np.zeros((grid,grid)) )
-        ODP.append( _np.zeros((grid,grid)) )
+## implausibility and optical depth plots for all pairs of active indices
+def plot_imps(wave, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
 
     ## space for all plots, and reference index to subplot indices
-    print("Creating plot objects... may take some time...")
-    plot = True if plot == True else False
-    rc = num_inputs if act == [] else len(act)
-    if plot:
-        fig, ax = _plt.subplots(nrows = rc, ncols = rc)
-    plot_ref = act_ref if act == [] else ref_plt(act)
+    print("Creating HM plot objects...")
+    rc = len(wave.act_ref)
+    fig, ax = _plt.subplots(nrows = rc, ncols = rc)
 
-    ## reduce sets to only the chosen ones
-    less_sets = []
-    if act == []:
-        less_sets = sets
-    else:
-        for s in sets:
-            if s[0] in act and s[1] in act:
-                less_sets.append(s)
-    print("HM for input pairs:", less_sets)
+    ## create list of all pairs of active inputs
+    sets = make_sets( [ wave.act_ref[key] for key in wave.act_ref.keys() ] )
+    #print("SETS:", sets)
 
-    return 0
+    ## set colorbar bounds
+    imp_cb = [0,wave.cm] if imp_cb == [] else [None, None]
+    odp_cb = [0,1] if odp_cb == [] else [None, None]
+
+    P = wave.TESTS[:,0].size
+    Imaxes = _np.array( [_np.sort(_np.partition(wave.I[r,:],-maxno)[-maxno:])[-maxno]
+                         for r in range(P)] )
+
+    ## loop over plot_bins()
+    for s in sets:
+        ail = [wave.act_ref[str(l)] for l in [s[0], s[1]]]
+        ex = ( wave.minmax[str(s[0])][0], wave.minmax[str(s[0])][1],
+               wave.minmax[str(s[1])][0], wave.minmax[str(s[1])][1] )
+
+        ax[ail[1],ail[0]].patch.set_facecolor(my_grey())
+        im_imp = ax[ail[1],ail[0]].hexbin(
+          wave.TESTS[:,ail[0]], wave.TESTS[:,ail[1]], C = Imaxes,
+          gridsize=grid, cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1],
+          reduce_C_function=_np.min, linewidths=linewidths, mincnt=1)
+
+        ax[ail[0],ail[1]].patch.set_facecolor(my_grey())
+        im_odp = ax[ail[0],ail[1]].hexbin(
+          wave.TESTS[:,ail[0]], wave.TESTS[:,ail[1]], C = Imaxes<wave.cm,
+          gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1],
+          linewidths=linewidths, mincnt=1)
+
+        ## for visualising new wave sim inputs, there will be an option to plot points
+        #ax[ail[1],ail[0]].scatter(0.2, 0.2, s=25, c='black')
+        #ax[ail[0],ail[1]].scatter(0.2, 0.2, s=25, c='black')
+
+        _plt.colorbar(im_imp, ax=ax[ail[1],ail[0]])
+        _plt.colorbar(im_odp, ax=ax[ail[0],ail[1]])
+
+
+    ## calls to make plot
+    plot_options(wave.act_ref, ax, fig, wave.minmax)
+    _plt.show()
+
+    return
