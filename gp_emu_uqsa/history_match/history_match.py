@@ -141,24 +141,43 @@ class Wave:
 
 
 ## implausibility and optical depth plots for all pairs of active indices
-def plot_imps(wave, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
+def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+        TESTS = wave.TESTS
+        P = TESTS[:,0].size
+        Imaxes = _np.array( [_np.sort(_np.partition(wave.I[r,:],-maxno)[-maxno:])[-maxno]
+                             for r in range(P)] )
+    ## multi wave
+    else:
+        wave = waves[0]
+
+        ## combine wave data
+        TESTS = wave.TESTS  # first wave's tests
+        I = wave.I  # first wave's imps
+        for subwave in waves[1:]:
+            TESTS = _np.concatenate((TESTS, subwave.TESTS))
+            I = _np.concatenate((I, subwave.I))
+
+        P = TESTS[:,0].size
+        Imaxes = _np.array( [_np.sort(_np.partition(I[r,:],-maxno)[-maxno:])[-maxno]
+                             for r in range(P)] )
 
     ## space for all plots, and reference index to subplot indices
     print("Creating HM plot objects...")
     rc = len(wave.act_ref)
     fig, ax = _plt.subplots(nrows = rc, ncols = rc)
 
+    ## set colorbar bounds
+    imp_cb = [0,wave.cm] if imp_cb == [] else imp_cb
+    odp_cb = [0,1] if odp_cb == [] else odp_cb
+
     ## create list of all pairs of active inputs
     sets = make_sets( [ wave.act_ref[key] for key in wave.act_ref.keys() ] )
     #print("SETS:", sets)
 
-    ## set colorbar bounds
-    imp_cb = [0,wave.cm] if imp_cb == [] else [None, None]
-    odp_cb = [0,1] if odp_cb == [] else [None, None]
-
-    P = wave.TESTS[:,0].size
-    Imaxes = _np.array( [_np.sort(_np.partition(wave.I[r,:],-maxno)[-maxno:])[-maxno]
-                         for r in range(P)] )
 
     ## loop over plot_bins()
     for s in sets:
@@ -168,13 +187,13 @@ def plot_imps(wave, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
 
         ax[ail[1],ail[0]].patch.set_facecolor(my_grey())
         im_imp = ax[ail[1],ail[0]].hexbin(
-          wave.TESTS[:,ail[0]], wave.TESTS[:,ail[1]], C = Imaxes,
+          TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes,
           gridsize=grid, cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1],
           reduce_C_function=_np.min, linewidths=linewidths, mincnt=1)
 
         ax[ail[0],ail[1]].patch.set_facecolor(my_grey())
         im_odp = ax[ail[0],ail[1]].hexbin(
-          wave.TESTS[:,ail[0]], wave.TESTS[:,ail[1]], C = Imaxes<wave.cm,
+          TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes<wave.cm,
           gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1],
           linewidths=linewidths, mincnt=1)
 
