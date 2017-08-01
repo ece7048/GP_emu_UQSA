@@ -8,7 +8,7 @@ import pickle
 
 
 ## using the information in the emulator files, generate an appropriate first design
-def first_design(emuls, n, chunks = 1, filename = "design.npy"):
+def first_design(emuls, n, filename = "design.npy"):
 
     minmax, orig_minmax = emulsetup(emuls)
     act_ref = ref_act(minmax)
@@ -159,6 +159,8 @@ class Wave:
 ## implausibility and optical depth plots for all pairs of active indices
 def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
 
+    print("HM plotting. Determining max", maxno,"imps...")
+
     ## single wave
     if not isinstance(waves, list):
         wave = waves
@@ -194,7 +196,7 @@ def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
     sets = make_sets( [ wave.act_ref[key] for key in wave.act_ref.keys() ] )
     #print("SETS:", sets)
 
-
+    print("Making subplots of paired indices...")
     ## loop over plot_bins()
     for s in sets:
         ail = [wave.act_ref[str(l)] for l in [s[0], s[1]]]
