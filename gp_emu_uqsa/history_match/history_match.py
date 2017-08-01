@@ -157,7 +157,7 @@ class Wave:
 
 
 ## implausibility and optical depth plots for all pairs of active indices
-def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
+def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2, filename="hexbin.pkl"):
 
     print("HM plotting. Determining max", maxno,"imps...")
 
@@ -215,16 +215,40 @@ def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2):
           gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1],
           linewidths=linewidths, mincnt=1)
 
-        ## for visualising new wave sim inputs, there will be an option to plot points
-        #ax[ail[1],ail[0]].scatter(0.2, 0.2, s=25, c='black')
-        #ax[ail[0],ail[1]].scatter(0.2, 0.2, s=25, c='black')
-
         _plt.colorbar(im_imp, ax=ax[ail[1],ail[0]])
         _plt.colorbar(im_odp, ax=ax[ail[0],ail[1]])
 
-
     ## calls to make plot
     plot_options(wave.act_ref, ax, fig, wave.minmax)
+    
+    ## test pickling of plot
+    pickle.dump([fig,ax], open(filename, 'wb'))
+    # This is for Python 3 - py2 may need `file` instead of `open`
+
     _plt.show()
 
     return
+
+
+## replot imp/odp using pickle file
+def replot_imps(filename="hexbin.pkl", points=[]):
+
+    fig, ax = pickle.load(open(filename,'rb'))
+
+    if points != []:
+        sets = []
+        p = points[:,0].size
+        dim = points[0,:].size
+        for i in range(dim):
+            for j in range(dim):
+                if i!=j and i<j and [i,j] not in sets:
+                    sets.append([i,j])
+        print("SETS:", sets)
+
+        ## for visualising new wave sim inputs, there will be an option to plot points
+        for s in sets:
+            for i in range(p):        
+                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+
+    _plt.show()
