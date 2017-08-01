@@ -8,7 +8,7 @@ import pickle
 
 
 ## using the information in the emulator files, generate an appropriate first design
-def first_design(emuls, n):
+def first_design(emuls, n, chunks = 1, filename = "design.npy"):
 
     minmax, orig_minmax = emulsetup(emuls)
     act_ref = ref_act(minmax)
@@ -21,7 +21,23 @@ def first_design(emuls, n):
 
     design = _gd.optLatinHyperCube(dim, n, 1, olhc_range, "blank", save = False)
 
+    # if filename supplied, trying memmap...
+    if filename != None:
+        print("\nNumpy 'save' to file LHC design for HM...")
+        _np.save(filename, design)
+
     return design
+
+
+## using the information in the emulator files, generate an appropriate first design
+def load_design(n, chunks = 1, k = 1, filename = "design.npy"):
+
+    print("Loading chunk", k, "of LHC design...")
+    design = _np.load(filename, mmap_mode='r')  # leaves array on disk
+    
+    ## access chunks of array
+    lower, upper = int(k * n/chunks), int((k+1) * n/chunks)
+    return design[lower:upper,:]
 
 
 class Wave:
@@ -30,7 +46,7 @@ class Wave:
         ## passed in
         self.emuls = emuls
         self.zs, self.var, self.cm = zs, var, cm
-        if tests != None:
+        if isinstance(tests, _np.ndarray):
             self.TESTS = tests.astype(_np.float16)
             self.I = _np.empty((self.TESTS[:,0].size,len(self.emuls)),dtype=_np.float16)
         else:
@@ -65,8 +81,8 @@ class Wave:
     ## search through the test inputs to find non-implausible points
     def calc_imps(self):
 
-        print("\nCalculating Implausibilities...")
         P = self.TESTS[:,0].size
+        print("\nCalculating Implausibilities of", P ,"points...")
         #I2_16 = _np.empty((P,len(self.emuls)),dtype=_np.float16) # could even use float16..?
         #I2_32 = _np.empty((P,len(self.emuls)),dtype=_np.float32) # could even use float16..?
 
