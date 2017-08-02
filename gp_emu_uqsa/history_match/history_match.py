@@ -5,6 +5,7 @@ from scipy import linalg
 import matplotlib.pyplot as _plt
 from ._hmutilfunctions import *
 import pickle
+import scipy.spatial.distance as _dist
 
 
 ## using the information in the emulator files, generate an appropriate first design
@@ -54,6 +55,7 @@ class Wave:
             self.I = []
 
         self.NIMP = []  # for storing all found imp points (index into test_points..?)
+        self.NIMP_I = []  # for storing all found imp points imp values
         self.NROY = []  # create a design to fill NROY space based of found NIMP points
 
         ## minmax seems to be the corresponding minmax pairs...
@@ -65,7 +67,7 @@ class Wave:
     ## pickle a list of relevant data
     def save(self, filename):
         print("Pickling wave data in", filename, "...")
-        w = [ self.TESTS, self.I, self.NIMP ]  # test these 3 for now
+        w = [ self.TESTS, self.I, self.NIMP, self.NIMP_I ]  # test these 3 for now
         with open(filename, 'wb') as output:
             pickle.dump(w, output, pickle.HIGHEST_PROTOCOL)
         return
@@ -75,7 +77,7 @@ class Wave:
         print("Unpickling wave data in", filename, "...")
         with open(filename, 'rb') as input:
             w = pickle.load(input)
-        self.TESTS, self.I, self.NIMP = w[0], w[1], w[2]
+        self.TESTS, self.I, self.NIMP, self.NIMP_I = w[0], w[1], w[2], w[3]
         return
 
     ## search through the test inputs to find non-implausible points
@@ -140,6 +142,7 @@ class Wave:
     def find_NIMP(self, maxno=1):
 
         self.NIMP = []  # make empty because may call twice (different maxnos)
+        self.NIMP_I = []  # make empty because may call twice (different maxnos)
 
         ## SHOULD THROW ERROR IF WE HAVEN'T CALCULATED IMP VALUES YET
 
@@ -148,9 +151,12 @@ class Wave:
             ## find maximum implausibility across different outputs
             Imaxes = _np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno:]
             ## check cut-off
-            if Imaxes[-(maxno)] < self.cm:  self.NIMP.append(self.TESTS[r])
+            if Imaxes[-(maxno)] < self.cm:
+                self.NIMP.append(self.TESTS[r])
+                self.NIMP_I.append(Imaxes)
 
         self.NIMP = _np.asarray(self.NIMP)
+        self.NIMP_I = _np.asarray(self.NIMP_I)
         print("NIMP fraction:", 100*float(len(self.NIMP))/float(P), "%")
 
         return
@@ -222,7 +228,7 @@ def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2, fil
     plot_options(wave.act_ref, ax, fig, wave.minmax)
     
     ## test pickling of plot
-    pickle.dump([fig,ax], open(filename, 'wb'))
+    pickle.dump([fig,ax, imp_cb], open(filename, 'wb'))
     # This is for Python 3 - py2 may need `file` instead of `open`
 
     _plt.show()
@@ -231,9 +237,9 @@ def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2, fil
 
 
 ## replot imp/odp using pickle file
-def replot_imps(filename="hexbin.pkl", points=[]):
+def replot_imps(filename="hexbin.pkl", points=[], Is=[]):
 
-    fig, ax = pickle.load(open(filename,'rb'))
+    fig, ax, imp_cb = pickle.load(open(filename,'rb'))
 
     if points != []:
         sets = []
@@ -243,12 +249,56 @@ def replot_imps(filename="hexbin.pkl", points=[]):
             for j in range(dim):
                 if i!=j and i<j and [i,j] not in sets:
                     sets.append([i,j])
-        print("SETS:", sets)
+        #print("SETS:", sets)
 
         ## for visualising new wave sim inputs, there will be an option to plot points
         for s in sets:
             for i in range(p):        
-                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
-                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                #ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                #ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
+                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
 
     _plt.show()
+
+    return
+
+
+## choose new simulation inputs
+def new_inputs(waves, n, N=100):
+
+    print("Calculating spread of new sim points from NIMP...")
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+        NIMP = wave.NIMP
+        NIMP_I = wave.NIMP_I
+        P = NIMP[:,0].size
+    ## multi wave
+    else:
+        wave = waves[0]
+        ## combine wave data
+        NIMP = wave.NIMP  # first wave's tests
+        NIMP_I = wave.NIMP_I
+        for subwave in waves[1:]:
+            NIMP = _np.concatenate((NIMP, subwave.NIMP))
+            NIMP_I = _np.concatenate((NIMP_I, subwave.NIMP_I))
+        P = NIMP[:,0].size
+ 
+    for k in range(0,N):
+        idx = _np.random.choice(NIMP.shape[0], n, replace=False)
+        x = NIMP[idx, :]
+        maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
+        if k==0 or maximin > best_maximin:
+            best_D = _np.copy(x)
+            best_D_I = _np.copy(NIMP_I[idx])
+            best_k = k
+            best_maximin = maximin
+
+    D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
+    if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
+
+    return D, D_I
