@@ -444,6 +444,7 @@ class All_Data:
 
         # inputs scaling options
         self.input_minmax = beliefs.input_minmax
+        self.scaled = scaleinputs ## new
         self.map_inputs_0to1(par, scaleinputs)
 
         self.data_shuffle(datashuffle)
@@ -457,36 +458,40 @@ class All_Data:
 
     ## uses actual min and max of inputs
     def map_inputs_0to1(self, par, scaleinputs):
+
+        ## find the minmax of each dimension
         minmax_l = []
-        if scaleinputs == False:
-            print("Input scaling off")
-            for i in range(0,self.x_full[0].size):
-                templist = ( 0.0, 1.0 )
-                minmax_l.append(templist)
-            self.minmax = np.array(minmax_l)
-        else:
-            if self.input_minmax == []:
-                print("Input scaling based on data")
-                for i in range(0,self.x_full[0].size):
-                    templist =\
-                      ( np.amin(self.x_full[:,i]) , np.amax(self.x_full[:,i]) )
-                    minmax_l.append(templist)
-                self.minmax = np.array(minmax_l)
-                self.input_minmax = [list(i) for i in minmax_l]
-            else:
-                print("Input scaling based on \"input_minmax\" in beliefs file")
-                self.minmax = np.array(self.input_minmax)
-        # actually scale the data
         for i in range(0,self.x_full[0].size):
-            self.x_full[:,i] = (self.x_full[:,i]-self.minmax[i,0])\
-                             / (self.minmax[i,1]-self.minmax[i,0])
-            print("Dim",i,"scaled by %",(self.minmax[i,1]-self.minmax[i,0]))
-        # record range of this data for plotting purposes
+            minmax_l.append([ np.amin(self.x_full[:,i]) , np.amax(self.x_full[:,i]) ])
+
+        previous_training = False
+
+        ## if emuls were not trained previously
+        if self.input_minmax == []:
+            print("\"minmax\" calc. from data")
+            self.minmax = np.array(minmax_l)
+            self.input_minmax = [list(i) for i in minmax_l]
+        ## if emuls were trained previously
+        else:
+            previous_training = True
+            print("\"minmax\" set to \"input_minmax\" of beliefs file")
+            self.minmax = np.array(self.input_minmax)
+
+        if scaleinputs == True or previous_training == True:
+            for i in range(self.x_full[0].size):
+                self.x_full[:,i] = (self.x_full[:,i] - self.minmax[i,0])\
+                                 / (self.minmax[i,1] - self.minmax[i,0])
+                print("Dim", i, "scaled by %", (self.minmax[i,1] - self.minmax[i,0]))
+        else:
+            print("Input scaling off")
+
+        # record range of this data after scaling (or not) for plotting purposes
         self.input_range = []
         for i in range(0,self.x_full[0].size):
             temp = [ np.amin(self.x_full[:,i]) , np.amax(self.x_full[:,i]) ]
             self.input_range.append(temp)
         
+        print("MINMAX:", self.minmax)
  
     def data_shuffle(self, datashuffle):
         if datashuffle:
@@ -719,12 +724,13 @@ class Posterior:
         i_file  = E.config.inputs  + "-o" + o + "-" + n + f
         o_file  = E.config.outputs + "-o" + o + "-" + n + f
 
-        # unscale the saved inputs before saving
+        # unscale the saved inputs before saving, if they were scaled
         data4file = np.copy(self.Dold.inputs)
-        for i in range(0,data4file[0].size):
-            data4file[:,i] = data4file[:,i] \
-              * (E.all_data.minmax[i,1]-E.all_data.minmax[i,0]) \
-              + E.all_data.minmax[i,0]
+        if E.all_data.scaled == True:
+            for i in range(0,data4file[0].size):
+                data4file[:,i] = data4file[:,i] \
+                  * (E.all_data.minmax[i,1]-E.all_data.minmax[i,0]) \
+                  + E.all_data.minmax[i,0]
 
         print("Writing T-data to:", i_file)
         try:
