@@ -6,6 +6,7 @@ import matplotlib.pyplot as _plt
 from ._hmutilfunctions import *
 import pickle
 import scipy.spatial.distance as _dist
+import diversipy as dv
 
 
 ## using the information in the emulator files, generate an appropriate first design
@@ -15,7 +16,8 @@ def first_design(emuls, n, filename = "design.npy"):
     act_ref = ref_act(minmax)
     dim = len(act_ref)
     #print("\nDIM:", dim)
-    #print("\nMINMAX:", minmax)
+    print("\nMINMAX:", minmax)
+    print("\nORIG_MINMAX:", orig_minmax)
 
     olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
     #print("\nOLHC:", olhc_range)
@@ -54,9 +56,11 @@ class Wave:
             self.TESTS = []
             self.I = []
 
+        ## could replace these with indices into the test points, rather than store more
         self.NIMP = []  # for storing all found imp points (index into test_points..?)
         self.NIMP_I = []  # for storing all found imp points imp values
-        self.NROY = []  # create a design to fill NROY space based of found NIMP points
+        ## create a design to fill NROY space based of found NIMP points
+        self.NROY = []  
 
         ## minmax seems to be the corresponding minmax pairs...
         ## orig_minmax seems to be the pre-scaling minmax values...
@@ -213,12 +217,14 @@ def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2, fil
         im_imp = ax[ail[1],ail[0]].hexbin(
           TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes,
           gridsize=grid, cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1],
+          extent=ex,
           reduce_C_function=_np.min, linewidths=linewidths, mincnt=1)
 
         ax[ail[0],ail[1]].patch.set_facecolor(my_grey())
         im_odp = ax[ail[0],ail[1]].hexbin(
           TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes<wave.cm,
           gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1],
+          extent=ex,
           linewidths=linewidths, mincnt=1)
 
         _plt.colorbar(im_imp, ax=ax[ail[1],ail[0]])
@@ -254,12 +260,12 @@ def replot_imps(filename="hexbin.pkl", points=[], Is=[]):
         ## for visualising new wave sim inputs, there will be an option to plot points
         for s in sets:
             for i in range(p):        
-                #ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
-                #ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
-                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
-                        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
-                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
-                        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
+                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                #ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                #        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
+                #ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                #        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
 
     _plt.show()
 
@@ -288,17 +294,49 @@ def new_inputs(waves, n, N=100):
             NIMP_I = _np.concatenate((NIMP_I, subwave.NIMP_I))
         P = NIMP[:,0].size
  
-    for k in range(0,N):
-        idx = _np.random.choice(NIMP.shape[0], n, replace=False)
-        x = NIMP[idx, :]
-        maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
-        if k==0 or maximin > best_maximin:
-            best_D = _np.copy(x)
-            best_D_I = _np.copy(NIMP_I[idx])
-            best_k = k
-            best_maximin = maximin
+#    for k in range(0,N):
+#        idx = _np.random.choice(NIMP.shape[0], n, replace=False)
+#        x = NIMP[idx, :]
+#        maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
+#        if k==0 or maximin > best_maximin:
+#            best_D = _np.copy(x)
+#            best_D_I = _np.copy(NIMP_I[idx])
+#            best_k = k
+#            best_maximin = maximin
+#
+#    D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
+#    if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
+#
+#    return D, D_I
 
-    D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
-    if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
+    #subset = dv.psa_select(NIMP, n, selection_target='centroid_of_hypercube')
+    subset = dv.select_greedy_maximin(NIMP, n) ## selects spread out points
+    #subset = dv.select_greedy_maxisum(NIMP, n) ## selects extremal points
+    #subset = dv.select_greedy_energy(NIMP, n, exponent=int(NIMP[0].size*20)) ## selects spread out points
 
-    return D, D_I
+    return subset
+
+
+## rescale inputs back into original units
+def orig_units(waves, points):
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+    ## multi wave
+    else:
+        wave = waves[0]
+
+    minmax = wave.minmax
+    print("MINMAX:", minmax)
+    minmax = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
+    print("MINMAX:", minmax)
+    if wave.emuls[0].all_data.scaled == True:
+        print("Unscaling points into original units")
+        for i in range(0, points[0].size):
+            points[:,i] = points[:,i] \
+              * (minmax[i][1] - minmax[i][0]) \
+              + minmax[i][0]
+    
+    return points
+
