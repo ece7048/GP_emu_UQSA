@@ -226,15 +226,15 @@ class Optimize:
                     res = minimize(llh, x_guess, method = 'L-BFGS-B', jac=True)
 
                 ## for checks on if function gradient is correct
-                debug_grad = True
+                debug_grad = False
                 if debug_grad:
                     func_m = lambda x: self.loglikelihood_mucm(x, debug="func")
                     grad_m = lambda x: self.loglikelihood_mucm(x, debug="grad")
                     func_g = lambda x: self.loglikelihood_gp4ml(x, debug="func")
                     grad_g = lambda x: self.loglikelihood_gp4ml(x, debug="grad")
                     func, grad = (func_m, grad_m) if self.beliefs.mucm == 'T' else (func_g, grad_g)
-                    print("  grad error initial guess:", check_grad(func_g, grad_g, x_guess))
-                    print("  grad error optimized val:", check_grad(func_g, grad_g, res.x))
+                    print("  grad error initial guess:", check_grad(func, grad, x_guess))
+                    print("  grad error optimized val:", check_grad(func, grad, res.x))
 
             except TypeError as e:
                 nonPSDfail = True
