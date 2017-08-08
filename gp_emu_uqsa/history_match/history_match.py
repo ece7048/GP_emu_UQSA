@@ -53,6 +53,7 @@ class Wave:
             self.TESTS = tests.astype(_np.float16)
             self.I = _np.empty((self.TESTS[:,0].size,len(self.emuls)),dtype=_np.float16)
         else:
+            ## need a function to set TESTS without using load, so I is intialised properly
             self.TESTS = []
             self.I = []
 
@@ -104,6 +105,7 @@ class Wave:
 
             ## NOTES
             #### K** is 1 - estimation not prediction?
+            #### NO... to get estimation, don't add Iv, therefore (1-v) on diag of K**
 
             Hnew = _np.empty([len(E.training.basis.h)]) 
             beta = E.training.par.beta
@@ -111,7 +113,7 @@ class Wave:
             y = E.training.outputs
             Hold = E.training.H
             s2 = E.training.beliefs.sigma**2  # sigma*2
-            Knew = 1.0 # K**
+            Knew = (1.0-E.training.beliefs.nugget) # K**
             invA_H = linalg.solve( K, Hold )
             Q = Hold.T.dot(invA_H)  # H A^-1 H
             T = linalg.solve(K, y - Hold.dot(beta))
@@ -293,28 +295,34 @@ def new_inputs(waves, n, N=100):
             NIMP = _np.concatenate((NIMP, subwave.NIMP))
             NIMP_I = _np.concatenate((NIMP_I, subwave.NIMP_I))
         P = NIMP[:,0].size
- 
-#    for k in range(0,N):
-#        idx = _np.random.choice(NIMP.shape[0], n, replace=False)
-#        x = NIMP[idx, :]
-#        maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
-#        if k==0 or maximin > best_maximin:
-#            best_D = _np.copy(x)
-#            best_D_I = _np.copy(NIMP_I[idx])
-#            best_k = k
-#            best_maximin = maximin
-#
-#    D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
-#    if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
-#
-#    return D, D_I
 
-    #subset = dv.psa_select(NIMP, n, selection_target='centroid_of_hypercube')
-    subset = dv.select_greedy_maximin(NIMP, n) ## selects spread out points
-    #subset = dv.select_greedy_maxisum(NIMP, n) ## selects extremal points
-    #subset = dv.select_greedy_energy(NIMP, n, exponent=int(NIMP[0].size*20)) ## selects spread out points
+    if False:
 
-    return subset
+        for k in range(0,N):
+            idx = _np.random.choice(NIMP.shape[0], n)#, replace=False)
+            x = NIMP[idx, :]
+            maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
+            if k==0 or maximin > best_maximin:
+                best_D = _np.copy(x)
+                best_D_I = _np.copy(NIMP_I[idx])
+                best_k = k
+                best_maximin = maximin
+
+        D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
+        if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
+
+        return D#, D_I
+
+    else:
+        if n > P:
+            print("ERROR: Asking for subset larger than set...")
+            exit()
+        #subset = dv.psa_select(NIMP, n, selection_target='centroid_of_hypercube')
+        subset = dv.select_greedy_maximin(NIMP, n) ## selects spread out points
+        #subset = dv.select_greedy_maxisum(NIMP, n) ## selects extremal points
+        #subset = dv.select_greedy_energy(NIMP, n, exponent=int(NIMP[0].size*20)) ## selects spread out points
+        if subset.size == 0:  print("WARNING: nothing in subset!")
+        return subset
 
 
 ## rescale inputs back into original units
@@ -340,3 +348,25 @@ def orig_units(waves, points):
     
     return points
 
+
+## rescale inputs back into original units
+def new_units(waves, points):
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+    ## multi wave
+    else:
+        wave = waves[0]
+
+    minmax = wave.minmax
+    print("MINMAX:", minmax)
+    minmax = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
+    print("MINMAX:", minmax)
+    if wave.emuls[0].all_data.scaled == True:
+        print("Scaling points into new units")
+        for i in range(0, points[0].size):
+            points[:,i] = (points[:,i] - minmax[i][0]) \
+              / (minmax[i][1] - minmax[i][0]) \
+    
+    return points
