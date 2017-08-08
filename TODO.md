@@ -4,6 +4,7 @@
 * Check the diagonal correction in the gradient of loglikelihood_gp4ml function
 * The LLH gradients may have errors, despite optimizing to same values... needs rechecking
 * Rewrite and simplify the main code as it's too convoluted
+* Return non-zero exit status when failure
 
 
 ## sensitivity
