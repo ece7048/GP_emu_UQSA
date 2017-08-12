@@ -5,6 +5,34 @@ from scipy.optimize import minimize
 #from scipy.optimize import differential_evolution
 import time
 
+import sys
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+
+    #print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    print('\x08%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r', flush=True)
+    #sys.stdout.write('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix))
+    #sys.stdout.flush()
+
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
+
+
 ## use '@timeit' to decorate a function for timing
 def timeit(f):
     def timed(*args, **kw):
@@ -224,8 +252,12 @@ class Optimize:
             print("Using L-BFGS-G method (no constraints)...")
 
         ## try each x-guess (start value for optimisation)
+        myprint = False
+        printProgressBar(0, numguesses, prefix = 'Progress:', suffix = '', length = 25)
         for C in range(0,numguesses):
             x_guess = list(guessgrid[:,C])
+            #print(C, x_guess, numguesses)
+            #input()
 
             nonPSDfail = False
             try:
@@ -257,15 +289,17 @@ class Optimize:
                     print(res, "\n")
                     if res.success != True:
                         print(res.message, "Not succcessful.")
-            
+
                 ## result of fit
                 sig_str = "" 
                 if self.beliefs.mucm == 'T':
                     self.sigma_analytic_mucm(self.data.K.untransform(res.x))
                     sig_str = "  sig: " + str(np.around(self.par.sigma,decimals=4))
+
+                #if myprint == True: 
                 print("  hp: ",\
-                    np.around(self.data.K.untransform(res.x),decimals=4),\
-                    " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
+                        np.around(self.data.K.untransform(res.x),decimals=4),\
+                        " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
                     
                 ## set best result
                 if (res.fun < best_min) or first_try:
@@ -276,6 +310,10 @@ class Optimize:
 
             else:
                 print("Trying next guess...")
+
+            # Update Progress Bar
+            printProgressBar(C + 1, numguesses, prefix = 'Progress:', suffix = '', length = 25)
+
 
         print("********")
         if first_try == False:
