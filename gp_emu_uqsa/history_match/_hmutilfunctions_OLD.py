@@ -4,8 +4,15 @@ import numpy as _np
 import matplotlib.pyplot as _plt
 import matplotlib.colors as _colors
 
+def make_sets(ai):
+    sets = [] # generate sets from active_index inputs
+    for i in ai:
+        for j in ai:
+            if i!=j and i<j and [i,j] not in sets:
+                sets.append([i,j])
+    return sets
 
-## checks emulators have been trained previously, and returns minmax of inputs
+
 def emulsetup(emuls):
     minmax = {} # fetch minmax information from the beliefs files
     orig_minmax = {} # fetch minmax information from the beliefs files
@@ -18,29 +25,21 @@ def emulsetup(emuls):
                   "using updated beliefs files, "
                   "so they are missing 'active_index' and 'input_minmax'. Exiting.")
             exit()
-
+        sets = make_sets(ai)
         for i in range(len(ai)):
+            #minmax[str(ai[i])] = mm[i]
             ## scale minmax into appropriate range
             minmax[str(ai[i])] = list( (_np.array(mm[i]) - mm[i][0])/(mm[i][1] - mm[i][0]) )
             orig_minmax[str(ai[i])] = list( (_np.array(mm[i])) )
 
+    print("\nactive index pairs:" , sets)
     print("\nminmax for active inputs:" , minmax)
     print("original units minmax for active inputs:", orig_minmax)
-    return minmax, orig_minmax
+    return sets, minmax, orig_minmax
 
 
-## generate sets from active_index inputs
-def make_sets(ai):
-    sets = []
-    for i in ai:
-        for j in ai:
-            if i!=j and i<j and [i,j] not in sets:
-                sets.append([i,j])
-    return sets
-
-
-## reference active indices to ordered list of integers
 def ref_act(minmax):
+    ## reference active indices to ordered list of integers
     act_ref = {}
     count = 0
     for key in sorted(minmax.keys(), key=lambda x: int(x)):
@@ -50,7 +49,6 @@ def ref_act(minmax):
     return act_ref
 
 
-## may be used later when we restrict which active indices to pair in imp/odp plots
 def ref_plt(act):
     plt_ref = {}
     count = 0
@@ -61,7 +59,6 @@ def ref_plt(act):
     return plt_ref
 
 
-## if user supplies list of active_indices to plot, this checks the list is approp
 def check_act(act, sets):
     ## check 'act' is appropriate
     if type(act) is not list:
@@ -74,35 +71,47 @@ def check_act(act, sets):
     return True
 
 
-################################
-## Plotting utility functions ##
-################################
-
-def my_grey():
-    return '#696988'
-
-def imp_colormap():
-    return _colors.LinearSegmentedColormap.from_list('imp', 
-                                        [(0,    '#90ff3c'),
-                                         (0.50, '#ffff3c'),
-                                         (0.80, '#e2721b'),
-                                        (1,    '#db0100')], N=256)
-
-def odp_colormap():
-    return _colors.LinearSegmentedColormap.from_list('odp', 
-                                        [(0,    my_grey()),
-                                         (1.0/float(256),    '#ffffff'),
-                                         (0.20, '#93ffff'),
-                                         (0.45, '#5190fc'),
-                                         (0.65, '#0000fa'),
-                                        (1,    '#db00fa')], N=256)
-
-def colormap(cmap, b, t):
+def imp_colormap(cmap):
     n = 100
-    cb   = _np.linspace(b, t, n)
+    gc = 0.5 # green
+    yc1 = 0.525 # yellow 1
+    yc2 = 0.8 # yellow 2
+    rc = 1.0 # red
+    green = _np.linspace(gc, yc1, 5*n/10)   # 00-50% green
+    yellow = _np.linspace(yc1, yc2, 4*n/10) # 50-80% yellow
+    red   = _np.linspace(yc2, rc, 1*n/10)   # 80-100% red
+    cb = _np.append( _np.append(green, yellow) , red )
     new_cmap = _colors.LinearSegmentedColormap.from_list(
-        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=b, b=t), cmap( cb ) )
+        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=gc, b=rc),
+        cmap( cb ) )
     return new_cmap
+
+
+def make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=None, recon=False, imp_cb=[], odp_cb=[]):
+
+    imp_pal = _plt.get_cmap('jet')
+    imp_pal = imp_colormap(imp_pal)
+    odp_pal = _plt.get_cmap('afmhot')
+
+    (odp, imp) = (ODP, IMP) if recon else (ODP[maxno-1], IMP[maxno-1])
+
+    opd = _np.ma.masked_where(odp == 0, odp)
+    ax[plt_ref[str(s[0])],plt_ref[str(s[1])]].set_axis_bgcolor('darkgray')
+ 
+    ex = None if recon else ( minmax[str(s[0])][0], minmax[str(s[0])][1],
+                              minmax[str(s[1])][0], minmax[str(s[1])][1] )
+
+    im_imp = ax[plt_ref[str(s[1])],plt_ref[str(s[0])]].imshow(imp.T,
+      origin = 'lower', cmap = imp_pal, extent = ex,
+      vmin=imp_cb[0], vmax=imp_cb[1], interpolation='none' )
+
+    im_odp = ax[plt_ref[str(s[0])],plt_ref[str(s[1])]].imshow(odp.T,
+      origin = 'lower', cmap = odp_pal, extent = ex,
+      vmin=odp_cb[0], vmax=odp_cb[1], interpolation='none' )
+
+    _plt.colorbar(im_imp, ax=ax[plt_ref[str(s[1])],plt_ref[str(s[0])]])
+    _plt.colorbar(im_odp, ax=ax[plt_ref[str(s[0])],plt_ref[str(s[1])]])
+    return None
 
 
 def plot_options(plt_ref, ax, fig, minmax=None):
@@ -132,4 +141,23 @@ def plot_options(plt_ref, ax, fig, minmax=None):
     _plt.tight_layout()
     return None
 
+
+def load_datafiles(datafiles, orig_minmax):
+
+    try:
+        sim_x, sim_y = _np.loadtxt(datafiles[0]), _np.loadtxt(datafiles[1])
+
+        if sim_x.size == 0 or sim_y.size == 0:
+            print("SOFT WARNING: datafile(s)", datafiles, "may be empty (which is fine if intended!).")
+            return None, None
+        else:
+            ## scale the inputs from the data file
+            for key in orig_minmax.keys():
+                sim_x[:,int(key)] = (sim_x[:,int(key)] - orig_minmax[key][0]) \
+                                      /(orig_minmax[key][1] - orig_minmax[key][0])
+            return sim_x, sim_y
+
+    except FileNotFoundError as e:
+        print("ERROR: datafile(s)", datafiles, "for inputs and/or outputs not found. Exiting.")
+        exit()
 

@@ -42,6 +42,9 @@ class Sensitivity:
         self.W = np.linalg.inv( (self.H.T)\
             .dot(np.linalg.solve(self.A, self.H)  ) )
         self.G = np.linalg.solve(self.A, self.H)
+        print("e",self.e)
+        print("G",self.G)
+        print("W",self.W)
 
         ### for saving to file -- set to true when functions have run
         self.done_uncertainty = False

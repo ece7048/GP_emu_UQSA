@@ -12,10 +12,10 @@ class kernel():
         self.d = par.delta
         self.n = par.nugget
    
-    def set_hp(self, d, s, n):
-        self.d = d
-        self.n = n
-        return
+    #def set_hp(self, d, s, n):
+    #    self.d = d
+    #    self.n = n
+    #    return
 
     def set_params(self, x):
         self.d = x[0:self.d.size]

@@ -1,350 +1,372 @@
 import gp_emu_uqsa.design_inputs as _gd
-import gp_emu_uqsa._emulatorclasses as __emuc
+import gp_emu_uqsa._emulatorclasses as emuc
 import numpy as _np
+from scipy import linalg
 import matplotlib.pyplot as _plt
 from ._hmutilfunctions import *
+import pickle
+import scipy.spatial.distance as _dist
+import diversipy as dv
 
-def imp_plot(emuls, zs, cm, var_extra, maxno=1, olhcmult=100, grid=10, act=[], fileStr="", plot=True):
-    """Create an implausibility and optical depth plot, made of subplots for each pair of active inputs (or only those specified). Implausibility plots in the lower triangle, optical depth plots in the upper triangle. The diagonal is blank, and implausibility plots are paired with optical depth plots across the diagonal.
 
-    Args:
-        emuls (Emulator list): list of Emulator instances
-        zs (float list): list of output values to match
-        cm (float list): cut-off for implausibility
-        var_extra (float list): extra (non-emulator) variance on outputs
-        maxno (int): which maximum implausibility to consider, default 1
-        olhcmult (int): option for size of oLHC design across other inputs not in the considered pair, size = olhcmult*(no. active inputs - 2), default 100
-        grid (int): divisions of each input range to make, with values of each input for a subplot centred on the gridpoint, default 10
-        act (int list): list of active inputs for plot, default [] (all inputs)
-        fileStr (str): string to prepend to output files, default ""
-        plot (bool): choice to plot (e.g. False for batches), default True
+## using the information in the emulator files, generate an appropriate first design
+def first_design(emuls, n, filename = "design.npy"):
 
-    Returns:
-        None
-
-    """
-
-    sets, minmax, orig_minmax = emulsetup(emuls)
-    check_act(act, sets)
+    minmax, orig_minmax = emulsetup(emuls)
     act_ref = ref_act(minmax)
-    plt_ref = ref_plt(act)
+    dim = len(act_ref)
+    #print("\nDIM:", dim)
+    print("\nMINMAX:", minmax)
+    print("\nORIG_MINMAX:", orig_minmax)
 
-    num_inputs = len(minmax) # number of inputs we'll look at
-    dim = num_inputs - 2 # dimensions of input that we'll change with oLHC
+    olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
+    #print("\nOLHC:", olhc_range)
 
-    maxno=int(maxno)
-    IMP , ODP = [], [] ## need an IMP and ODP for each I_max
-    for i in range(maxno):
-        IMP.append( _np.zeros((grid,grid)) )
-        ODP.append( _np.zeros((grid,grid)) )
+    design = _gd.optLatinHyperCube(dim, n, 1, olhc_range, "blank", save = False)
+
+    # if filename supplied, trying memmap...
+    if filename != None:
+        print("\nNumpy 'save' to file LHC design for HM...")
+        _np.save(filename, design)
+
+    return design
+
+
+## using the information in the emulator files, generate an appropriate first design
+def load_design(n, chunks = 1, k = 1, filename = "design.npy"):
+
+    print("Loading chunk", k, "of LHC design...")
+    design = _np.load(filename, mmap_mode='r')  # leaves array on disk
+    
+    ## access chunks of array
+    lower, upper = int(k * n/chunks), int((k+1) * n/chunks)
+    return design[lower:upper,:]
+
+
+class Wave:
+    """Stores data for wave of HM search."""
+    def __init__(self, emuls, zs, cm, var, tests):
+        ## passed in
+        self.emuls = emuls
+        self.zs, self.var, self.cm = zs, var, cm
+        if isinstance(tests, _np.ndarray):
+            self.TESTS = tests.astype(_np.float16)
+            self.I = _np.empty((self.TESTS[:,0].size,len(self.emuls)),dtype=_np.float16)
+        else:
+            ## need a function to set TESTS without using load, so I is intialised properly
+            self.TESTS = []
+            self.I = []
+
+        ## could replace these with indices into the test points, rather than store more
+        self.NIMP = []  # for storing all found imp points (index into test_points..?)
+        self.NIMP_I = []  # for storing all found imp points imp values
+        ## create a design to fill NROY space based of found NIMP points
+        self.NROY = []  
+
+        ## minmax seems to be the corresponding minmax pairs...
+        ## orig_minmax seems to be the pre-scaling minmax values...
+        self.minmax, self.orig_minmax = emulsetup(emuls)
+        self.act_ref = ref_act(self.minmax)  # refs active indices to ordered integers
+
+
+    ## pickle a list of relevant data
+    def save(self, filename):
+        print("Pickling wave data in", filename, "...")
+        w = [ self.TESTS, self.I, self.NIMP, self.NIMP_I ]  # test these 3 for now
+        with open(filename, 'wb') as output:
+            pickle.dump(w, output, pickle.HIGHEST_PROTOCOL)
+        return
+
+    ## unpickle a list of relevant data
+    def load(self, filename):
+        print("Unpickling wave data in", filename, "...")
+        with open(filename, 'rb') as input:
+            w = pickle.load(input)
+        self.TESTS, self.I, self.NIMP, self.NIMP_I = w[0], w[1], w[2], w[3]
+        return
+
+    ## search through the test inputs to find non-implausible points
+    def calc_imps(self):
+
+        P = self.TESTS[:,0].size
+        print("\nCalculating Implausibilities of", P ,"points...")
+        #I2_16 = _np.empty((P,len(self.emuls)),dtype=_np.float16) # could even use float16..?
+        #I2_32 = _np.empty((P,len(self.emuls)),dtype=_np.float32) # could even use float16..?
+
+        ## loop over outputs (i.e. over emulators)
+        for o in range(len(self.emuls)):
+            E, z, v = self.emuls[o], self.zs[o], self.var[o]
+            Eai = E.beliefs.active_index
+
+            ## extract the active inputs for this emulator from test inputs
+            print("Active inputs for this emul:", Eai)
+            act_ind_list = [self.act_ref[str(l)] for l in Eai]
+            print("Matching indices in design array:", act_ind_list)
+
+            ## NOTES
+            #### K** is 1 - estimation not prediction?
+            #### NO... to get estimation, don't add Iv, therefore (1-v) on diag of K**
+
+            Hnew = _np.empty([len(E.training.basis.h)]) 
+            beta = E.training.par.beta
+            K = E.training.A
+            y = E.training.outputs
+            Hold = E.training.H
+            s2 = E.training.beliefs.sigma**2  # sigma*2
+            Knew = (1.0-E.training.beliefs.nugget) # K**
+            invA_H = linalg.solve( K, Hold )
+            Q = Hold.T.dot(invA_H)  # H A^-1 H
+            T = linalg.solve(K, y - Hold.dot(beta))
+
+            print("Calculating implausibilites for output", o, "...")
+            ## loop over test points
+            for p in range(P):
+                x = self.TESTS[p, act_ind_list]
+
+                covar = E.K.covar(E.training.inputs, x.reshape(x.shape[0],-1).T)  # K*
+
+                for j in range(0, len(E.training.basis.h)):
+                    Hnew[j] = E.training.basis.h[j](x)  # H*
+
+                R = Hnew - (covar.T).dot(invA_H)
+
+                pmean = Hnew.dot(beta) + covar.T.dot(T)
+                pvar  = s2*( Knew - covar.T.dot( linalg.solve( K, covar ) ) )
+
+                ## calculate implausibility^2 values for point p, output o
+                self.I[p,o] = _np.sqrt( ( pmean - z )**2 / ( pvar + v ) )
+
+                ## compare results from different precisions -> differences seem unimportant
+                #print("test point:", p, "I:", I[p,o])
+                #I2_16[p,o] = ( pmean - z )**2 / ( pvar + v )
+                #I2_32[p,o] = ( pmean - z )**2 / ( pvar + v )
+                #print("  diff:", I2_32[p,o] - I2_16[p,o])
+                
+        return
+
+    ## find all the non-implausible points in the test points
+    def find_NIMP(self, maxno=1):
+
+        self.NIMP = []  # make empty because may call twice (different maxnos)
+        self.NIMP_I = []  # make empty because may call twice (different maxnos)
+
+        ## SHOULD THROW ERROR IF WE HAVEN'T CALCULATED IMP VALUES YET
+
+        P = self.TESTS[:,0].size
+        for r in range(P):
+            ## find maximum implausibility across different outputs
+            Imaxes = _np.sort(_np.partition(self.I[r,:],-maxno)[-maxno:])[-maxno:]
+            ## check cut-off
+            if Imaxes[-(maxno)] < self.cm:
+                self.NIMP.append(self.TESTS[r])
+                self.NIMP_I.append(Imaxes)
+
+        self.NIMP = _np.asarray(self.NIMP)
+        self.NIMP_I = _np.asarray(self.NIMP_I)
+        print("NIMP fraction:", 100*float(len(self.NIMP))/float(P), "%")
+
+        return
+
+
+## implausibility and optical depth plots for all pairs of active indices
+def plot_imps(waves, maxno=1, grid=10, imp_cb=[], odp_cb=[], linewidths=0.2, filename="hexbin.pkl"):
+
+    print("HM plotting. Determining max", maxno,"imps...")
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+        TESTS = wave.TESTS
+        P = TESTS[:,0].size
+        Imaxes = _np.array( [_np.sort(_np.partition(wave.I[r,:],-maxno)[-maxno:])[-maxno]
+                             for r in range(P)] )
+    ## multi wave
+    else:
+        wave = waves[0]
+
+        ## combine wave data
+        TESTS = wave.TESTS  # first wave's tests
+        I = wave.I  # first wave's imps
+        for subwave in waves[1:]:
+            TESTS = _np.concatenate((TESTS, subwave.TESTS))
+            I = _np.concatenate((I, subwave.I))
+
+        P = TESTS[:,0].size
+        Imaxes = _np.array( [_np.sort(_np.partition(I[r,:],-maxno)[-maxno:])[-maxno]
+                             for r in range(P)] )
 
     ## space for all plots, and reference index to subplot indices
-    print("Creating plot objects... may take some time...")
-    plot = True if plot == True else False
-    rc = num_inputs if act == [] else len(act)
-    if plot:
-        fig, ax = _plt.subplots(nrows = rc, ncols = rc)
-    plot_ref = act_ref if act == [] else ref_plt(act)
+    print("Creating HM plot objects...")
+    rc = len(wave.act_ref)
+    fig, ax = _plt.subplots(nrows = rc, ncols = rc)
 
-    ## reduce sets to only the chosen ones
-    less_sets = []
-    if act == []:
-        less_sets = sets
-    else:
-        for s in sets:
-            if s[0] in act and s[1] in act:
-                less_sets.append(s)
-    print("HM for input pairs:", less_sets)
+    ## set colorbar bounds
+    imp_cb = [0,wave.cm] if imp_cb == [] else imp_cb
+    odp_cb = [0,1] if odp_cb == [] else odp_cb
 
-    ## calculate plot for each pair of inputs
-    for s in less_sets:
-        print("\nset:", s)
+    ## create list of all pairs of active inputs
+    sets = make_sets( [ wave.act_ref[key] for key in wave.act_ref.keys() ] )
+    #print("SETS:", sets)
 
-        ## rows and columns of 2D grid for the {i,j} value of pair of inputs
-        X1 = _np.linspace(minmax[str(s[0])][0], minmax[str(s[0])][1], grid, endpoint=False)
-        X1 = X1 + 0.5*(minmax[str(s[0])][1] - minmax[str(s[0])][0])/float(grid)
-        X2 = _np.linspace(minmax[str(s[1])][0], minmax[str(s[1])][1], grid, endpoint=False)
-        X2 = X2 + 0.5*(minmax[str(s[1])][1] - minmax[str(s[1])][0])/float(grid)
-        print("Values of the grid 1:" , X1)
-        print("Values of the grid 2:" , X2)
-        x_all=_np.zeros((grid*grid,2))
-        for i in range(0,grid):
-            for j in range(0,grid):
-                x_all[i*grid+j,0] = X1[i]
-                x_all[i*grid+j,1] = X2[j]
-
-        ## use an OLHC design for all remaining inputs
-        n = dim * int(olhcmult)  # no. of design_points
-        N = int(n/2)  # number of designs from which 1 maximin is chosen
-        olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0])) \
-                      if int(it[0])!=s[0] and int(it[0])!=s[1]]
-        print("olhc_range:", olhc_range)
-        filename = "imp_input_"+str(s[0])+'_'+str(s[1])
-        _gd.optLatinHyperCube(dim, n, N, olhc_range, filename)
-        x_other_inputs = _np.loadtxt(filename) # read generated oLHC file in
-        
-        ## enough for ALL inputs - we'll mask any inputs not used by a particular emulator later
-        x = _np.empty( [n , num_inputs] )
-
-        ## stepping over the grid {i,j} to build subplot
-        print("\nCalculating Implausibilities...")
-        for i in range(0,grid):
-            for j in range(0,grid):
-                I2 = _np.zeros((n,len(emuls)))
-
-                ## loop over outputs (i.e. over emulators)
-                for o in range(len(emuls)):
-                    E, z, var_e = emuls[o], zs[o], var_extra[o]
-                    Eai = E.beliefs.active_index
-                    ind_in_active=True if s[0] in Eai and s[1] in Eai else False
-                    if ind_in_active:
-
-                        ## set the input pair for this subplot
-                        x[:,act_ref[str(s[0])]] = x_all[i*grid+j, 0]
-                        x[:,act_ref[str(s[1])]] = x_all[i*grid+j, 1]
-
-                        ## figure out what the other inputs active_indices are
-                        other_dim = [act_ref[str(key)] for key in act_ref if int(key) not in s]
-                        if len(other_dim) == 1:
-                            x[:,other_dim] = _np.array([x_other_inputs,]).T
-                        else:
-                            x[:,other_dim] = x_other_inputs
-                        
-                        ## inactive inputs are masked
-                        act_ind_list = [act_ref[str(l)] for l in Eai]
-                        ni = __emuc.Data(x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-                        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
-                        mean = post.mean
-                        var  = _np.diag(post.var)
-
-                        ## calculate implausibility^2 values
-                        for r in range(0,n):
-                            I2[r,o] = ( mean[r] - z )**2 / ( var[r] + var_e )
-
-                ## find maximum implausibility across different outputs
-                I = _np.sqrt(I2)
-                odp_count = _np.zeros(maxno,dtype=_np.uint32)
-                Imaxes = _np.empty([n,maxno])
-                for r in range(0,n):
-                    Imaxes[r,:] = _np.sort(_np.partition(I[r,:],-maxno)[-maxno:])[-maxno:]
-                    for m in range(maxno):
-                        if Imaxes[r,-(m+1)] < cm: # check cut-off using this value
-                            odp_count[m] = odp_count[m] + 1
-
-                for m in range(maxno):
-                    IMP[m][i,j] = _np.amin(Imaxes[:,-(m+1)]) # minimise across n points
-                    ODP[m][i,j] = float(odp_count[m]) / float(n)
-
-        ## save the results to file
-        nfileStr = fileStr + "_" if fileStr != "" else fileStr
-        for m in range(maxno): ## different file for each max
-            _np.savetxt(nfileStr+str(m+1)+"_"+"IMP_"+str(s[0])+'_'+str(s[1]), IMP[m])
-            _np.savetxt(nfileStr+str(m+1)+"_"+"ODP_"+str(s[0])+'_'+str(s[1]), ODP[m])
-
-        if plot:
-            make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, minmax=minmax)
-
-    if plot:
-        plot_options(plt_ref, ax, fig, minmax)
-        _plt.show()
-
-    return
-
-
-def imp_plot_recon(cm, maxno=1, act=[], fileStr="", imp_cb=[], odp_cb=[]):
-    """Reconstruct an implausibility and optical depth plot from the results files made using the imp_plot() function.
-
-    Args:
-        cm (float list): cut-off for implausibility
-        maxno (int): which maximum implausibility to consider, default 1
-        act (int list): list of active inputs for plot, default [] (all inputs)
-        fileStr (str): string to prepend to output files, default ""
-
-    Returns:
-        None
-
-    """
-
-    if act == []:
-        print("WARNING: Please specificy 'act' for active inputs. Return None.")
-        return None
-
-    print("Creating plot objects... may take some time...")
-    fig, ax = _plt.subplots(nrows = len(act), ncols = len(act))
-    plt_ref = ref_plt(act)
-
-    sets = make_sets(act)
-    print("HM for input pairs:", sets)
-
-    try:
-        [ivmin, ivmax] = [0.0, cm] if imp_cb == [] else imp_cb
-        [ovmin, ovmax] = [None, None] if odp_cb == [] else odp_cb
-    except ValueError as e:
-        print("WARNING: invalid imp_cb and/or odp_cb supplied, setting to default.")
-        [ivmin, ivmax] = [0.0, cm]
-        [ovmin, ovmax] = [None, None]
-    
-    ## reload plot for each pair of inputs
+    print("Making subplots of paired indices...")
+    ## loop over plot_bins()
     for s in sets:
-        print("\nset:", s)
+        ail = [wave.act_ref[str(l)] for l in [s[0], s[1]]]
+        ex = ( wave.minmax[str(s[0])][0], wave.minmax[str(s[0])][1],
+               wave.minmax[str(s[1])][0], wave.minmax[str(s[1])][1] )
 
-        nfileStr = fileStr + "_" if fileStr != "" else fileStr
-        IMP = _np.loadtxt(nfileStr+str(maxno)+"_"+"IMP_"+str(s[0])+'_'+str(s[1]))
-        ODP = _np.loadtxt(nfileStr+str(maxno)+"_"+"ODP_"+str(s[0])+'_'+str(s[1]))
+        ax[ail[1],ail[0]].patch.set_facecolor(my_grey())
+        im_imp = ax[ail[1],ail[0]].hexbin(
+          TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes,
+          gridsize=grid, cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1],
+          extent=ex,
+          reduce_C_function=_np.min, linewidths=linewidths, mincnt=1)
 
-        make_plots(s, plt_ref, cm, maxno, ax, IMP, ODP, recon=True,\
-                   imp_cb=[ivmin, ivmax], odp_cb=[ovmin, ovmax])
+        ax[ail[0],ail[1]].patch.set_facecolor(my_grey())
+        im_odp = ax[ail[0],ail[1]].hexbin(
+          TESTS[:,ail[0]], TESTS[:,ail[1]], C = Imaxes<wave.cm,
+          gridsize=grid, cmap=odp_colormap(), vmin=odp_cb[0], vmax=odp_cb[1],
+          extent=ex,
+          linewidths=linewidths, mincnt=1)
 
-    plot_options(plt_ref, ax, fig)
+        _plt.colorbar(im_imp, ax=ax[ail[1],ail[0]])
+        _plt.colorbar(im_odp, ax=ax[ail[0],ail[1]])
+
+    ## calls to make plot
+    plot_options(wave.act_ref, ax, fig, wave.minmax)
+    
+    ## test pickling of plot
+    pickle.dump([fig,ax, imp_cb], open(filename, 'wb'))
+    # This is for Python 3 - py2 may need `file` instead of `open`
+
     _plt.show()
 
     return
 
 
-def nonimp_data(emuls, zs, cm, var_extra, datafiles, maxno=1, act=[], fileStr=""):
-    """Determine which inputs from a specified input file are non-implausible, and output these values (along with the corresponding outputs from a specified output file) to new files.
+## replot imp/odp using pickle file
+def replot_imps(filename="hexbin.pkl", points=[], Is=[]):
 
-    Args:
-        emuls (Emulator list): list of Emulator instances
-        zs (float list): list of output values to match
-        cm (float list): cut-off for implausibility
-        var_extra (float list): extra (non-emulator) variance on outputs
-        datafiles(str list): specify names of inputs and outputs files
-        maxno (int): which maximum implausibility to consider, default 1
-        act (int list): list of active inputs for plot, default [] (all inputs)
-        fileStr (str): string to prepend to output files of non-implausible inputs and outputs, default ""
+    fig, ax, imp_cb = pickle.load(open(filename,'rb'))
 
-    Returns:
-        nimp_inputs (int): number of non-implausible input points in input datafile
+    if points != []:
+        sets = []
+        p = points[:,0].size
+        dim = points[0,:].size
+        for i in range(dim):
+            for j in range(dim):
+                if i!=j and i<j and [i,j] not in sets:
+                    sets.append([i,j])
+        #print("SETS:", sets)
 
-    """
+        ## for visualising new wave sim inputs, there will be an option to plot points
+        for s in sets:
+            for i in range(p):        
+                ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=15, c='black')
+                #ax[s[1],s[0]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                #        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
+                #ax[s[0],s[1]].scatter(points[i,s[0]], points[i,s[1]], s=20,\
+                #        c=Is[i], cmap=imp_colormap(), vmin=imp_cb[0], vmax=imp_cb[1])
 
-    sets, minmax, orig_minmax = emulsetup(emuls)
-    act_ref = ref_act(minmax)
-    num_inputs = len(minmax)
-    check_act(act, sets)
-    maxno=int(maxno)
+    _plt.show()
 
-    sim_x, sim_y = load_datafiles(datafiles, orig_minmax)
-    n = sim_x[:,0].size
-
-    print("\nCalculating Implausibilities...")
-    I2 = _np.zeros((n,len(emuls)))
-
-    ## loop over outputs (i.e. over emulators)
-    for o in range(len(emuls)):
-        E, z, var_e = emuls[o], zs[o], var_extra[o]
-        Eai = E.beliefs.active_index
-        act_ind_list = [act_ref[str(l)] for l in Eai]
-
-        ni = __emuc.Data(sim_x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
-        mean = post.mean
-        var  = _np.diag(post.var)
-
-        ## calculate implausibility^2 values
-        for r in range(0,n):
-            I2[r,o] = ( mean[r] - z )**2 / ( var[r] + var_e )
-
-    ## find maximum implausibility across different outputs
-    I = _np.sqrt(I2)
-    Imaxes = _np.empty([n,maxno])
-    nimp_inputs, nimp_outputs = [], []
-    for r in range(0,n):
-        Imaxes[r,:] = _np.sort(_np.partition(I[r,:],-maxno)[-maxno:])[-maxno:]
-
-        m = maxno-1
-        if Imaxes[r,-(m+1)] < cm: # check cut-off using this value
-            nimp_inputs.append(sim_x[r,:])
-            nimp_outputs.append(sim_y[r,:])
-
-    ## save the results to file
-    nfileStr = fileStr + "_" if fileStr != "" else fileStr
-
-    for m in range(maxno):
-        _np.savetxt(nfileStr + "nonimp_" + datafiles[0], nimp_inputs)
-        _np.savetxt(nfileStr + "nonimp_" + datafiles[1], nimp_outputs)
-
-    print(len(nimp_inputs), "data points were non-implausible")
-
-    return len(nimp_inputs)
+    return
 
 
-def new_wave_design(emuls, zs, cm, var_extra, datafiles, maxno=1, olhcmult=100, act=[], fileStr=""):
-    """Create a set of non-implausible design inputs to use for more simulations or experiments. Datafiles of non-implausible inputs (and corresponding outputs) should be provided so the design is optimised with respect to this data. An optimised Latin Hypercube design is made and only non-implausible inputs from this are kept. To adjust the design size while fixing cm, try adjusting olhcmult.
+## choose new simulation inputs
+def new_inputs(waves, n, N=100):
 
-    Args:
-        emuls (Emulator list): list of Emulator instances
-        zs (float list): list of output values to match
-        cm (float list): cut-off for implausibility
-        var_extra (float list): extra (non-emulator) variance on outputs
-        datafiles(str list): specify names of inputs and outputs files. These should be correspond to non-implausible inputs only; see nonimp_data() function 
-        maxno (int): which maximum implausibility to consider, default 1
-        olhcmult (int): option for size of oLHC design across other inputs not in the considered pair, size = olhcmult*(no. active inputs - 2), default 100
-        act (int list): list of active inputs for plot, default [] (all inputs)
-        fileStr (str): string to prepend to output files, default ""
+    print("Calculating spread of new sim points from NIMP...")
 
-    Returns:
-        nimp_inputs (int): number of non-implausible design points created
-
-    """
-
-    sets, minmax, orig_minmax = emulsetup(emuls)
-    act_ref = ref_act(minmax)
-    check_act(act, sets)
-    num_inputs = len(minmax)
-    dim = num_inputs 
-    maxno=int(maxno)
-    
-    sim_x, sim_y = load_datafiles(datafiles, orig_minmax)
-
-    ## use an OLHC design for all remaining inputs
-    n = dim * int(olhcmult)  # no. of design_points
-    N = int(n/2)  # number of designs from which 1 maximin is chosen
-    olhc_range = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))] 
-    print("olhc_range:", olhc_range)
-    filename = "olhc_des"
-    if sim_x == None:
-        _gd.optLatinHyperCube(dim, n, N, olhc_range, filename)
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+        NIMP = wave.NIMP
+        NIMP_I = wave.NIMP_I
+        P = NIMP[:,0].size
+    ## multi wave
     else:
-        _gd.optLatinHyperCube(dim, n, N, olhc_range, filename, fextra=sim_x)
-    x = _np.loadtxt(filename) # read generated oLHC file in
+        wave = waves[0]
+        ## combine wave data
+        NIMP = wave.NIMP  # first wave's tests
+        NIMP_I = wave.NIMP_I
+        for subwave in waves[1:]:
+            NIMP = _np.concatenate((NIMP, subwave.NIMP))
+            NIMP_I = _np.concatenate((NIMP_I, subwave.NIMP_I))
+        P = NIMP[:,0].size
 
-    print("\nCalculating Implausibilities...")
-    I2 = _np.zeros((n,len(emuls)))
+    if False:
 
-    ## loop over outputs (i.e. over emulators)
-    for o in range(len(emuls)):
-        E, z, var_e = emuls[o], zs[o], var_extra[o]
-        Eai = E.beliefs.active_index
-        act_ind_list = [act_ref[str(l)] for l in Eai]
+        for k in range(0,N):
+            idx = _np.random.choice(NIMP.shape[0], n)#, replace=False)
+            x = NIMP[idx, :]
+            maximin = _np.argmin( _dist.pdist(x, 'sqeuclidean') )
+            if k==0 or maximin > best_maximin:
+                best_D = _np.copy(x)
+                best_D_I = _np.copy(NIMP_I[idx])
+                best_k = k
+                best_maximin = maximin
 
-        ni = __emuc.Data(x[:,act_ind_list],None,E.basis,E.par,E.beliefs,E.K)
-        post = __emuc.Posterior(ni, E.training, E.par, E.beliefs, E.K, predict=False)
-        mean = post.mean
-        var  = _np.diag(post.var)
+        D, D_I, best_k = (best_D, best_D_I, best_k) if N > 1 else (x, 1)
+        if N > 1:  print("Optimal subset was no." , best_k)#, " with D:\n" , D)
 
-        ## calculate implausibility^2 values
-        for r in range(0,n):
-            I2[r,o] = ( mean[r] - z )**2 / ( var[r] + var_e )
+        return D#, D_I
 
-    ## find maximum implausibility across different outputs
-    I = _np.sqrt(I2)
-    Imaxes = _np.empty([n,maxno])
-    nimp_inputs = []
-    for r in range(0,n):
-        Imaxes[r,:] = _np.sort(_np.partition(I[r,:],-maxno)[-maxno:])[-maxno:]
+    else:
+        if n > P:
+            print("ERROR: Asking for subset larger than set...")
+            exit()
+        #subset = dv.psa_select(NIMP, n, selection_target='centroid_of_hypercube')
+        subset = dv.select_greedy_maximin(NIMP, n) ## selects spread out points
+        #subset = dv.select_greedy_maxisum(NIMP, n) ## selects extremal points
+        #subset = dv.select_greedy_energy(NIMP, n, exponent=int(NIMP[0].size*20)) ## selects spread out points
+        if subset.size == 0:  print("WARNING: nothing in subset!")
+        return subset
 
-        m = maxno-1
-        if Imaxes[r,-(m+1)] < cm: # check cut-off using this value
-            nimp_inputs.append(x[r,:])
 
-    ## save the results to file
-    nfileStr = fileStr + "_" if fileStr != "" else fileStr
-    for m in range(maxno): ## different file for each max
-        _np.savetxt(nfileStr + datafiles[0], nimp_inputs)
+## rescale inputs back into original units
+def orig_units(waves, points):
 
-    print("Generated", len(nimp_inputs), "new data points")
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+    ## multi wave
+    else:
+        wave = waves[0]
 
-    return len(nimp_inputs)
+    minmax = wave.minmax
+    print("MINMAX:", minmax)
+    minmax = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
+    print("MINMAX:", minmax)
+    if wave.emuls[0].all_data.scaled == True:
+        print("Unscaling points into original units")
+        for i in range(0, points[0].size):
+            points[:,i] = points[:,i] \
+              * (minmax[i][1] - minmax[i][0]) \
+              + minmax[i][0]
+    
+    return points
 
+
+## rescale inputs back into original units
+def new_units(waves, points):
+
+    ## single wave
+    if not isinstance(waves, list):
+        wave = waves
+    ## multi wave
+    else:
+        wave = waves[0]
+
+    minmax = wave.minmax
+    print("MINMAX:", minmax)
+    minmax = [it[1] for it in sorted(minmax.items(), key=lambda x: int(x[0]))]
+    print("MINMAX:", minmax)
+    if wave.emuls[0].all_data.scaled == True:
+        print("Scaling points into new units")
+        for i in range(0, points[0].size):
+            points[:,i] = (points[:,i] - minmax[i][0]) \
+              / (minmax[i][1] - minmax[i][0]) \
+    
+    return points

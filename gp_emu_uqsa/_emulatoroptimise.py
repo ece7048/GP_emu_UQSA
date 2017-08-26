@@ -32,6 +32,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total: 
         print()
 
+from scipy.optimize import check_grad
 
 ## use '@timeit' to decorate a function for timing
 def timeit(f):
@@ -72,7 +73,7 @@ class Optimize:
             for i in range(0, self.data.inputs[0].size):
                 data_range = np.amax(self.data.inputs[:,i])\
                            - np.amin(self.data.inputs[:,i])
-                d_bounds_t.append([0.001,data_range])
+                d_bounds_t.append([0.01,data_range])
                 print("    delta" , i , '[{:04.4f} , {:04.4f}]'.format(d_bounds_t[i][0] , d_bounds_t[i][1]) )
         else:
             print("User provided bounds for delta:")
@@ -85,7 +86,7 @@ class Optimize:
                 if config.delta_bounds[i] == []:
                     data_range = np.amax(self.data.inputs[:,i])\
                                - np.amin(self.data.inputs[:,i])
-                    d_bounds_t.append([0.001,data_range])
+                    d_bounds_t.append([0.01,data_range])
                     print("    delta" , i , '[{:04.4f} , {:04.4f}]'.format(d_bounds_t[i][0] , d_bounds_t[i][1]), "(data)")
                 else:
                     d_bounds_t.append(config.delta_bounds[i])
@@ -111,7 +112,7 @@ class Optimize:
             # use output range for sigma
             data_range = np.sqrt( np.amax(self.data.outputs)\
                        - np.amin(self.data.outputs) )
-            s_bounds_t.append([0.001,data_range])
+            s_bounds_t.append([0.01,data_range])
             print("    sigma  " , '[{:04.4f} , {:04.4f}]'.format(s_bounds_t[0][0] , s_bounds_t[0][1]) )
         else:
             print("User provided bounds for sigma:")
@@ -145,7 +146,7 @@ class Optimize:
 
         d_size = self.data.K.d.size
         for i in range(0, d_size):
-            self.cons.append([self.data.K.transform(0.001),None])
+            self.cons.append([self.data.K.transform(0.01),None])
          
         if self.beliefs.fix_nugget == 'F':
             self.cons.append([None,None])
@@ -184,14 +185,12 @@ class Optimize:
 
         numguesses = self.config.tries
         bounds = self.config.bounds
-
         self.print_message = print_message
 
         print("Optimising hyperparameters...")
 
         ## transform the provided bounds
         bounds = self.data.K.transform(bounds)
-        #print(bounds)       
  
         ## actual function containing the optimizer calls
         self.optimal(numguesses, bounds)
@@ -201,13 +200,8 @@ class Optimize:
         print("sigma:" , np.round(self.par.sigma,decimals=6))
 
         if self.beliefs.fix_nugget == 'F':
-            #if self.beliefs.alt_nugget == 'F':
             noisesig = np.sqrt(self.par.sigma**2 * (self.par.nugget)/(1.0-self.par.nugget))
             print("'noise sigma' estimate from nugget:" , noisesig)
-            #else:
-            #    noisesig = self.par.sigma * self.par.nugget
-            #    print("'noise sigma' estimate from alt nugget:" , noisesig)
-            
         
         self.optimalbeta()
         print("best beta: " , self.par.beta)
@@ -220,36 +214,31 @@ class Optimize:
         ## params - number of paramaters that need fitting
         params = self.data.K.d.size
         if self.beliefs.fix_nugget == 'F':
-            if self.beliefs.mucm == 'T':
-                params = params + 1
-            else:
-                params = params + 2
+            if self.beliefs.mucm == 'T': params = params + 1
+            else: params = params + 2
         else:
-            if self.beliefs.mucm == 'T':
-                params = params
-            else:
-                params = params + 1
+            if self.beliefs.mucm == 'T': params = params
+            else: params = params + 1
         
         ## construct list of guesses from bounds
         guessgrid = np.zeros([params, numguesses])
         print("Calculating initial guesses from bounds")
         for R in range(0, params):
-            BL = bounds[R][0]
-            BU = bounds[R][1]
+            BL, BU = bounds[R][0], bounds[R][1]
             guessgrid[R,:] = BL+(BU-BL)*np.random.random_sample(numguesses)
 
         ## print information about which parameters we're fitting
-        if self.beliefs.fix_nugget == 'F':
-            print("Training nugget on data")
+        if self.beliefs.fix_nugget == 'F': print("Training nugget on data")
 
-        if self.beliefs.mucm == 'T':
-            print("Using MUCM method for sigma")
+        ## print information about which method we're using
+        if self.beliefs.mucm == 'T': print("Using MUCM method for sigma")
+
+        ## set which LLH expression to use
+        llh = self.loglikelihood_mucm if self.beliefs.mucm == 'T' else self.loglikelihood_gp4ml
 
         ## tell user which fitting method is being used
-        if self.config.constraints != "none":
-            print("Using L-BFGS-G method (with constraints)...")
-        else:
-            print("Using L-BFGS-G method (no constraints)...")
+        if self.config.constraints != "none": print("Using L-BFGS-G method (with constraints)...")
+        else: print("Using L-BFGS-G method (no constraints)...")
 
         ## try each x-guess (start value for optimisation)
         myprint = False
@@ -258,32 +247,36 @@ class Optimize:
             x_guess = list(guessgrid[:,C])
             #print(C, x_guess, numguesses)
             #input()
+            print("\nInitial guess:", self.data.K.untransform(np.array(x_guess)))
 
             nonPSDfail = False
             try:
-                ## constraints - must use bounds for L-BFGS-B method
                 if self.config.constraints != "none":
-                    if self.beliefs.mucm == 'T':
-                        res = minimize(self.loglikelihood_mucm,
-                          x_guess, method = 'L-BFGS-B', jac=True, bounds=self.cons)
-                    else:
-                        res = minimize(self.loglikelihood_gp4ml,
-                          x_guess, method = 'L-BFGS-B', jac=True, bounds=self.cons)
-                ## no constraints
+                    res = minimize(llh, x_guess, method = 'L-BFGS-B', jac=True, bounds=self.cons)
                 else:
-                    if self.beliefs.mucm == 'T':
-                        res = minimize(self.loglikelihood_mucm,
-                          x_guess, method = 'L-BFGS-B', jac=True)
-                    else:
-                        res = minimize(self.loglikelihood_gp4ml,
-                          x_guess, method = 'L-BFGS-B', jac=True)
+                    res = minimize(llh, x_guess, method = 'L-BFGS-B', jac=True)
+
+                ## for checks on if function gradient is correct
+                debug_grad = False
+                if debug_grad:
+                    func_m = lambda x: self.loglikelihood_mucm(x, debug="func")
+                    grad_m = lambda x: self.loglikelihood_mucm(x, debug="grad")
+                    func_g = lambda x: self.loglikelihood_gp4ml(x, debug="func")
+                    grad_g = lambda x: self.loglikelihood_gp4ml(x, debug="grad")
+                    func, grad = (func_m, grad_m) if self.beliefs.mucm == 'T' else (func_g, grad_g)
+                    print("  grad error initial guess:", check_grad(func, grad, x_guess))
+                    print("  grad error optimized val:", check_grad(func, grad, res.x))
+
             except TypeError as e:
-                #print("Picked up the Type Error from non-PSD")
                 nonPSDfail = True
-                #exit()
 
             ## check that we didn't fail by having non-PSD matrix
             if nonPSDfail == False:
+                if self.print_message: print(res)
+
+                ## check more than 1 iteration was done
+                nfev = res.nfev
+                not_fit = True if nfev == 1 else False
 
                 if self.print_message:
                     print(res, "\n")
@@ -300,12 +293,22 @@ class Optimize:
                 print("  hp: ",\
                         np.around(self.data.K.untransform(res.x),decimals=4),\
                         " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
+                ## result of fit
+                HP = np.around(self.data.K.untransform(res.x),decimals=4)
+                if not_fit == False and res.success == True: # if successful
+                    sig_str = "" 
+                    if self.beliefs.mucm == 'T':
+                        self.sigma_analytic_mucm(self.data.K.untransform(res.x))
+                        sig_str = "  sig: " + str(np.around(self.par.sigma,decimals=4))
+                    print("  hp: ", HP, " llh: ", -1.0*np.around(res.fun,decimals=4) , sig_str)
+                else: # if unsuccessful
+                    if not_fit: print("  WARNING: Only 1 iteration for", HP, ", not fitted.")
+                    if res.success == False: print("  WARNING: Unsuccessful termination for", HP, ", not fitted.")
+                if self.print_message: print("\n")
                     
                 ## set best result
-                if (res.fun < best_min) or first_try:
-                    best_min = res.fun
-                    best_x = self.data.K.untransform(res.x)
-                    best_res = res
+                if (res.fun < best_min or first_try) and not_fit == False and res.success == True:
+                    best_min, best_x = res.fun, self.data.K.untransform(res.x)
                     first_try = False
 
             else:
@@ -319,28 +322,24 @@ class Optimize:
         if first_try == False:
             if self.beliefs.mucm == 'T':
                 self.data.K.set_params(best_x)
-                self.par.delta = self.data.K.d
-                self.par.nugget = self.data.K.n
                 self.sigma_analytic_mucm(best_x)
             else:
                 self.data.K.set_params(best_x[:-1])
-                self.par.delta = self.data.K.d
-                self.par.nugget = self.data.K.n
                 self.par.sigma = best_x[-1]
+            self.par.delta = self.data.K.d
+            self.par.nugget = self.data.K.n
 
-            #self.data.make_A()
-            s2 = self.par.sigma**2
-            self.data.make_A(s2) # including r still
+            self.data.make_A(self.par.sigma**2)
             self.data.make_H()
         else:
-            print("ERROR: No optimization was made due to non-PSD errors. "
-                  "Increase 'tries'. Exiting.")
+            print("ERROR: No optimization was made. Exiting.")
             exit()
 
 
 
-    # the loglikelihood provided by MUCM
-    def loglikelihood_mucm(self, x):
+    ## the loglikelihood provided by MUCM
+    def loglikelihood_mucm(self, x, debug=False):
+        if debug != False: x = np.array(x)
         x = self.data.K.untransform(x)
         self.data.K.set_params(x)
         self.data.make_A()
@@ -410,10 +409,15 @@ class Optimize:
                                            )
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
-        return LLH, grad_LLH
+        if debug == False:
+            return LLH, grad_LLH
+        elif debug == "func":
+            return LLH
+        elif debug == "grad":
+            return grad_LLH
 
 
     ## calculate sigma analytically - used for the MUCM method
@@ -439,15 +443,16 @@ class Optimize:
             self.par.sigma = np.sqrt(sig2)
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  In sigma_analytic_mucm(): "
-                  "Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: In sigma_analytic_mucm(): "
+                  "Matrix not PSD for", x, ", not fitted.")
             exit()
 
         return
 
 
-    # the loglikelihood provided by Gaussian Processes for Machine Learning 
-    def loglikelihood_gp4ml(self, x):
+    ## the loglikelihood provided by Gaussian Processes for Machine Learning 
+    def loglikelihood_gp4ml(self, x, debug=False):
+        if debug != False: x = np.array(x)
         x = self.data.K.untransform(x)
         self.data.K.set_params(x[:-1]) # not including sigma in x
         self.par.sigma = x[-1]
@@ -462,18 +467,19 @@ class Optimize:
         try:
             L = np.linalg.cholesky(self.data.A) 
             w = np.linalg.solve(L,self.data.H)
-            Q = w.T.dot(w)
+            Q = w.T.dot(w) # H A^-1 H
             K = np.linalg.cholesky(Q)
-            invA_f = np.linalg.solve(L.T, np.linalg.solve(L,self.data.outputs))
-            invA_H = np.linalg.solve(L.T, np.linalg.solve(L,self.data.H))
+            invA_f = np.linalg.solve(L.T, np.linalg.solve(L,self.data.outputs)) # A^-1 y
+            invA_H = np.linalg.solve(L.T, np.linalg.solve(L,self.data.H)) # A^-1 H
 
             solve_K_HT = np.linalg.solve(K,self.data.H.T)
-            B = np.linalg.solve(K.T, solve_K_HT.dot(invA_f))
+            B = np.linalg.solve(K.T, solve_K_HT.dot(invA_f)) # (H A^-1 H)^-1 H A^-1 y
 
             logdetA = 2.0*np.sum(np.log(np.diag(L)))
 
-            invA_H_dot_B = invA_H.dot(B)
+            invA_H_dot_B = invA_H.dot(B) # A^-1 H (H A^-1 H)^-1 H A^-1 y
             longexp = ( self.data.outputs.T ).dot( invA_f - invA_H_dot_B )
+            # y A^-1 y - y A^-1 H (H A^-1 H)^-1 H A^-1 y )
 
             LLH = -0.5*\
               (-longexp - logdetA - np.log(linalg.det(Q))\
@@ -483,6 +489,7 @@ class Optimize:
             grad_LLH = np.empty(x.size)
             
             H_dot_B = self.data.H.dot(B).T
+            # H (H A^-1 H)^-1 H A^-1 y
             
             #### wrt delta
             for i in range(self.data.K.d.size):
@@ -512,8 +519,7 @@ class Optimize:
 
             #### wrt sigma ## in gp4ml LLH sigma is always in x
             temp = self.data.A ## already X s2
-            #### NEW CODE
-            np.fill_diagonal(temp, temp.diagonal() - self.data.r)
+            np.fill_diagonal(temp, temp.diagonal() - self.data.r) ## correct for extra variance
             invA_gradHP = np.linalg.solve(L.T, np.linalg.solve(L,temp))
             sam = (invA_gradHP).dot(invA_H_dot_B)
             grad_LLH[x.size-1] = -0.5* (\
@@ -525,10 +531,15 @@ class Optimize:
                                 )
 
         except np.linalg.linalg.LinAlgError as e:
-            print("  Matrix not PSD for", x, ", try adjusting nugget.")
+            print("  WARNING: Matrix not PSD for", x, ", not fitted.")
             return None
 
-        return LLH, grad_LLH
+        if debug == False:
+            return LLH, grad_LLH
+        elif debug == "func":
+            return LLH
+        elif debug == "grad":
+            return grad_LLH
 
 
     # calculates the optimal value of the mean hyperparameters
